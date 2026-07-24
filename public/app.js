@@ -7,6 +7,7 @@ const q = $('#q');
 const go = $('#go');
 const tip = $('#tip');
 const recentList = $('#recent');
+const backBtn = $('#backBtn');
 const RECENT_KEY = 'ms_recent';
 
 const CN_RE = /[㐀-䶿一-鿿]/g;
@@ -16,6 +17,8 @@ function showState(name) {
   stateInput.classList.toggle('hidden', name !== 'input');
   stateLoading.classList.toggle('hidden', name !== 'loading');
   stateResult.classList.toggle('hidden', name !== 'result');
+  // 返回按钮：仅在结果页显示（待输入页用应用名/输入区即可）
+  backBtn.classList.toggle('hidden', name !== 'result');
 }
 
 function setTip(msg) {
@@ -193,6 +196,8 @@ function renderRecent() {
 go.addEventListener('click', run);
 q.addEventListener('keydown', (e) => { if (e.key === 'Enter') run(); });
 $('#appname').addEventListener('click', () => { setTip(''); showState('input'); });
+// 结果页左上角返回按钮：回到待输入页重新查询
+backBtn.addEventListener('click', () => { setTip(''); showState('input'); });
 // 帮助气泡（右上角 ? 点击，不切换页面）
 const helpBtn = $('#helpBtn');
 const helpBubble = $('#helpBubble');

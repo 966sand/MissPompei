@@ -193,6 +193,17 @@ body {
   display: flex; align-items: center; justify-content: center;
   cursor: pointer;
 }
+.back-btn {
+  position: absolute; top: 16px; left: 14px; z-index: 6;
+  width: 24px; height: 24px; border-radius: 50%;
+  border: 1.5px solid rgba(255,255,255,.9);
+  background: rgba(255,255,255,.08); color: #fff;
+  font-size: 18px; font-weight: 700; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+}
+.back-btn:active { background: rgba(255,255,255,.22); }
+.back-btn.hidden { display: none; }
 .help-btn:active { background: rgba(255,255,255,.22); }
 .help-bubble {
   position: absolute; top: 58px; right: 12px; z-index: 30;
