@@ -1,0 +1,20 @@
+# Render Blueprint —— 一键部署 Miss Sorrento
+# 用法：在 Render 控制台 "New" → "Blueprint" → 关联本仓库，即按此配置创建 Web 服务。
+# 注意：DEEPSEEK_API_KEY 不会进仓库，请在 Render 控制台的 Environment 里手动填入。
+services:
+  - type: web
+    name: miss-sorrento
+    runtime: node
+    plan: free
+    region: oregon          # 可选：singapore / frankfurt 等
+    branch: main
+    buildCommand: "npm install"   # 零依赖，等效空操作，保留以兼容
+    startCommand: "npm start"
+    healthCheckPath: "/"
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT              # Render 自动注入，无需手动填
+        sync: false
+      - key: DEEPSEEK_API_KEY  # 在 Render 控制台 Environment 手动填入你的 sk-...
+        sync: false

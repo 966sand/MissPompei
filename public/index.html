@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Miss Sorrento · 英语同义词辨析助手</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="phone">
+    <header class="topbar">
+      <div class="appname" id="appname">Miss Sorrento</div>
+      <div class="subtitle">英语同义词辨析助手</div>
+    </header>
+
+    <main class="screen" id="screen">
+      <!-- 待输入状态 -->
+      <section class="state" id="state-input">
+        <div class="search-card">
+          <div class="input-row">
+            <input id="q" class="q-input" type="text" placeholder="支持多个单词，用空格隔开" autocomplete="off" maxlength="200" />
+            <button id="go" class="go-btn">go</button>
+          </div>
+          <div class="tip" id="tip"></div>
+        </div>
+
+        <div class="quick">
+          <div class="quick-label">试试这些：</div>
+          <div class="tags" id="tags">
+            <span class="tag">route</span>
+            <span class="tag">period stage phase</span>
+            <span class="tag">big large</span>
+          </div>
+        </div>
+
+        <div class="recent">
+          <div class="recent-label">最近查询</div>
+          <ul class="recent-list" id="recent"></ul>
+        </div>
+      </section>
+
+      <!-- 加载中状态 -->
+      <section class="state hidden" id="state-loading">
+        <div class="sk-card"></div>
+        <div class="sk-card"></div>
+        <div class="sk-block"></div>
+        <div class="sk-block"></div>
+      </section>
+
+      <!-- 结果状态 -->
+      <section class="state hidden" id="state-result"></section>
+    </main>
+
+    <footer class="bottombar"></footer>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "name": "miss-sorrento",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Miss Sorrento · 英语同义词辨析助手（移动端前端 + DeepSeek 后端，零外部依赖）",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test-conn.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,5 @@
+# 不提交密钥与本地环境
+.env
+node_modules
+*.log
+.DS_Store
