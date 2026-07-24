@@ -1,9 +1,9 @@
-# Render Blueprint —— 一键部署 Miss Sorrento
+# Render Blueprint —— 一键部署 Miss Pompei
 # 用法：在 Render 控制台 "New" → "Blueprint" → 关联本仓库，即按此配置创建 Web 服务。
 # 注意：DEEPSEEK_API_KEY 不会进仓库，请在 Render 控制台的 Environment 里手动填入。
 services:
   - type: web
-    name: miss-sorrento
+    name: misspompei
     runtime: node
     plan: free
     region: oregon          # 可选：singapore / frankfurt 等
