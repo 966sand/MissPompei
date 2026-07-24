@@ -1,4 +1,4 @@
-// app.js — Miss Sorrento 前端交互（待输入 / 加载 / 结果 三态）
+// app.js — Miss Pompei 前端交互（待输入 / 加载 / 结果 三态）
 const $ = (s) => document.querySelector(s);
 const stateInput = $('#state-input');
 const stateLoading = $('#state-loading');
@@ -28,7 +28,7 @@ function validate(raw) {
   if (!s) return '请输入要查询的单词';
   if ([...s].length > 100) return '暂不支持超过100个字符的长度';
   const cn = (s.match(CN_RE) || []).length;
-  if (cn >= 6) return '不支持纯中文输入';
+  if (cn >= 1) return '不支持中文输入';
   return '';
 }
 
@@ -106,8 +106,10 @@ function renderSingle(data) {
       <div class="eu-rule">${esc(x.rule)}</div>
     </div>`).join('');
 
+  const synCount = (data.synonyms || []).length;
   stateResult.innerHTML = `
     <div class="result-scroll">
+      <div class="result-summary">${esc(p.word)}单词一共${synCount}个同义词</div>
       ${wordCard(p, 'var(--blue)')}
       <div class="syn-title">同义词</div>
       ${syn}
@@ -146,8 +148,10 @@ function renderMulti(data) {
     return `<div class="uniq-block"><div class="uniq-title">只能用 ${esc(x.word)}</div>${ex}</div>`;
   }).join('');
 
+  const wCount = (data.words || []).length;
   stateResult.innerHTML = `
     <div class="result-scroll">
+      <div class="result-summary">本次一共对比${wCount}个单词</div>
       ${words}
       <div class="analysis">
         <div class="an-title">整体对比</div>
@@ -189,6 +193,18 @@ function renderRecent() {
 go.addEventListener('click', run);
 q.addEventListener('keydown', (e) => { if (e.key === 'Enter') run(); });
 $('#appname').addEventListener('click', () => { setTip(''); showState('input'); });
+// 帮助气泡（右上角 ? 点击，不切换页面）
+const helpBtn = $('#helpBtn');
+const helpBubble = $('#helpBubble');
+helpBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  helpBubble.classList.toggle('hidden');
+});
+document.addEventListener('click', (e) => {
+  if (helpBubble.classList.contains('hidden')) return;
+  if (e.target === helpBtn || helpBubble.contains(e.target)) return;
+  helpBubble.classList.add('hidden');
+});
 document.querySelectorAll('.tag').forEach((t) => {
   t.addEventListener('click', () => { q.value = t.textContent.trim(); setTip(''); run(); });
 });

@@ -3,15 +3,17 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Miss Sorrento · 英语同义词辨析助手</title>
+  <title>Miss Pompei · 英语同义词辨析助手</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <div class="phone">
     <header class="topbar">
-      <div class="appname" id="appname">Miss Sorrento</div>
+      <div class="appname" id="appname">Miss Pompei</div>
       <div class="subtitle">英语同义词辨析助手</div>
+      <div class="help-btn" id="helpBtn">?</div>
     </header>
+    <div class="help-bubble hidden" id="helpBubble">Shakespeare said：Token is so expensive ！</div>
 
     <main class="screen" id="screen">
       <!-- 待输入状态 -->
@@ -41,10 +43,10 @@
 
       <!-- 加载中状态 -->
       <section class="state hidden" id="state-loading">
-        <div class="sk-card"></div>
-        <div class="sk-card"></div>
-        <div class="sk-block"></div>
-        <div class="sk-block"></div>
+        <div class="loading-wrap">
+          <div class="spinner"></div>
+          <div class="loading-text">查询中…</div>
+        </div>
       </section>
 
       <!-- 结果状态 -->

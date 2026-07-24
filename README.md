@@ -1,4 +1,4 @@
-# Miss Sorrento · 英语同义词辨析助手
+# Miss Pompei · 英语同义词辨析助手
 
 移动端网页应用：输入一个或几个英语单词，给出音标、中文意思、用法、例句，以及同义词/多词之间的用法差异辨析。
 后端调用 **DeepSeek** 生成内容，零外部依赖（仅用 Node 20+ 内置 `http` 与 `fetch`）。
@@ -9,7 +9,7 @@
 miss-sorrento/
 ├── server.js        # 后端：静态托管 + /api/analyze
 ├── config.js        # 读取 .env 配置
-├── validate.js      # 输入校验（1–100 字符 / 中文<6）
+├── validate.js      # 输入校验（1–100 字符 / 含任意中文字符即拦截）
 ├── prompts.js       # 单/多词 prompt 模板（强制 JSON schema）
 ├── deepseek.js      # DeepSeek 调用 + 解析兜底
 ├── test-conn.mjs    # 端到端连通性测试
@@ -44,7 +44,7 @@ node test-conn.mjs
 ## 输入规则（前端 + 后端双重拦截）
 
 - 长度 1–100 个字符；超过 100 → 「暂不支持超过100个字符的长度」
-- 中文字符 ≥ 6 个 → 「不支持纯中文输入」
+- 含任意中文字符（≥1 个）→ 「不支持中文输入」
 - 单个单词走「场景1（单词 + 同义词差异）」；空格分隔的多个单词走「场景2（多词对比）」
 
 ## API
@@ -83,7 +83,7 @@ node test-conn.mjs
 cd miss-sorrento
 git init
 git add .
-git commit -m "Miss Sorrento 初始版本"
+git commit -m "Miss Pompei 初始版本"
 git remote add origin <你的 GitHub 仓库地址>
 git push -u origin main
 ```

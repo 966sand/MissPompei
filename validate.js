@@ -1,7 +1,7 @@
 // validate.js — 输入校验（前端 + 后端共用同一套规则）
 // 规则：
 //   1. 长度 1–100 个字符；超过 100 返回「暂不支持超过100个字符的长度」
-//   2. 中文字符 >= 6 个时返回「不支持纯中文输入」
+//   2. 只要检测到任意中文字符即返回「不支持中文输入」
 //   3. 空输入返回「请输入要查询的单词」
 
 const CN_RE = /[㐀-䶿一-鿿]/g;
@@ -15,7 +15,7 @@ export function validateInput(raw) {
   if (len > 100) return { ok: false, msg: '暂不支持超过100个字符的长度' };
 
   const cnCount = (s.match(CN_RE) || []).length;
-  if (cnCount >= 6) return { ok: false, msg: '不支持纯中文输入' };
+  if (cnCount >= 1) return { ok: false, msg: '不支持中文输入' };
 
   return { ok: true, normalized: s };
 }
