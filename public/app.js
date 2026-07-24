@@ -112,7 +112,7 @@ function renderSingle(data) {
   const synCount = (data.synonyms || []).length;
   stateResult.innerHTML = `
     <div class="result-scroll">
-      <div class="result-summary">${esc(p.word)}单词一共${synCount}个同义词</div>
+      <div class="result-summary">${esc(p.word)}单词有${synCount}个近义词</div>
       ${wordCard(p, 'var(--blue)')}
       <div class="syn-title">同义词</div>
       ${syn}
