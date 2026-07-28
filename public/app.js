@@ -21,42 +21,47 @@ const CN_RE = /[㐀-䶿一-鿿]/g;
 const ACCENTS = ['var(--blue)', 'var(--green)', 'var(--orange)'];
 const SPEAKER = '<svg class="sp-ico" viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z"/></svg>';
 
-let currentTab = 'query';
-let backTarget = '';   // 'input' | 'library'
+// 状态机：两个 tab 各自记住内部子视图，切换 tab 互不丢失状态
+let currentTab = 'query';   // 'query' | 'library'
+let queryView = 'input';    // 'input' | 'loading' | 'result'
+let libView = 'library';    // 'library' | 'detail'
 let popPage = 0;
 
-function showState(name) {
-  stateInput.classList.toggle('hidden', name !== 'input');
-  stateLoading.classList.toggle('hidden', name !== 'loading');
-  stateResult.classList.toggle('hidden', name !== 'result');
-  backBtn.classList.toggle('hidden', name !== 'result');
+// 仅重绘「查近义词」tab 内部的子视图（结果页 innerHTML 保留，切换回来仍在）
+function paintQuery() {
+  stateLibrary.classList.add('hidden');
+  stateDetail.classList.add('hidden');
+  stateInput.classList.toggle('hidden', queryView !== 'input');
+  stateLoading.classList.toggle('hidden', queryView !== 'loading');
+  stateResult.classList.toggle('hidden', queryView !== 'result');
+  backBtn.classList.toggle('hidden', queryView !== 'result');
 }
 
-// 主切换：查近义词 / 近义词库
+// 仅重绘「近义词库」tab 内部的子视图
+function paintLibrary() {
+  stateInput.classList.add('hidden');
+  stateLoading.classList.add('hidden');
+  stateResult.classList.add('hidden');
+  stateLibrary.classList.toggle('hidden', libView !== 'library');
+  stateDetail.classList.toggle('hidden', libView !== 'detail');
+  backBtn.classList.toggle('hidden', libView !== 'detail');
+  if (libView === 'library') renderLibrary();
+}
+
+// 主切换：查近义词 / 近义词库（各自保留上次的子状态）
 function showTab(tab) {
   currentTab = tab;
-  [stateInput, stateLoading, stateResult, stateLibrary, stateDetail]
-    .forEach((s) => s.classList.add('hidden'));
   tabQuery.classList.toggle('active', tab === 'query');
   tabLib.classList.toggle('active', tab === 'library');
-  if (tab === 'query') {
-    showState('input');
-  } else {
-    backTarget = '';
-    backBtn.classList.add('hidden');
-    renderLibrary();
-    stateLibrary.classList.remove('hidden');
-  }
+  if (tab === 'query') paintQuery();
+  else paintLibrary();
 }
 
 // 从库中点开某条，复用结果渲染，显示完整辨析
 function showDetail(data) {
+  libView = 'detail';
   renderResult(data, stateDetail);
-  [stateInput, stateLoading, stateResult, stateLibrary]
-    .forEach((s) => s.classList.add('hidden'));
-  stateDetail.classList.remove('hidden');
-  backTarget = 'library';
-  backBtn.classList.remove('hidden');
+  paintLibrary();
 }
 
 function setTip(msg) {
@@ -85,7 +90,8 @@ async function run() {
   if (v) { setTip(v); return; }
   setTip('');
   const input = q.value.trim();
-  showState('loading');
+  queryView = 'loading';
+  paintQuery();
   try {
     const resp = await fetch('/api/analyze', {
       method: 'POST',
@@ -96,11 +102,12 @@ async function run() {
     if (!resp.ok) throw new Error(data.error || '请求失败');
     renderResult(data);
     pushRecent(input, data);
-    showState('result');
+    queryView = 'result';
   } catch (e) {
-    showState('input');
+    queryView = 'input';
     setTip(e.message || '服务暂时不可用');
   }
+  paintQuery();
 }
 
 // ---------- 渲染：单词卡片（含发音按钮） ----------
@@ -273,6 +280,11 @@ function renderLibPopular() {
   if (popPage >= batches) popPage = 0;
   const batch = all.slice(popPage * 10, popPage * 10 + 10);
   if (!batch.length) {
+    // 数据可能尚未就绪，稍后重试一次（避免脚本加载时序导致空白）
+    if (all.length === 0 && !renderLibPopular._retry) {
+      renderLibPopular._retry = true;
+      setTimeout(() => { renderLibPopular._retry = false; renderLibrary(); }, 400);
+    }
     libPopular.innerHTML = '<div class="lib-empty">暂无热门数据</div>';
     return;
   }
@@ -311,11 +323,11 @@ if ('speechSynthesis' in window) {
 // ---------- 事件绑定 ----------
 go.addEventListener('click', run);
 q.addEventListener('keydown', (e) => { if (e.key === 'Enter') run(); });
-$('#appname').addEventListener('click', () => { setTip(''); showTab('query'); });
+$('#appname').addEventListener('click', () => { setTip(''); queryView = 'input'; showTab('query'); });
 backBtn.addEventListener('click', () => {
   setTip('');
-  if (backTarget === 'library') showTab('library');
-  else showState('input');
+  if (libView === 'detail') { libView = 'library'; paintLibrary(); }
+  else { queryView = 'input'; paintQuery(); }
 });
 tabQuery.addEventListener('click', () => showTab('query'));
 tabLib.addEventListener('click', () => showTab('library'));
@@ -342,4 +354,6 @@ document.querySelectorAll('.tag').forEach((t) => {
 
 // ---------- 初始化 ----------
 renderRecent();
+renderLibrary();          // 预渲染库：确保打开即有默认热门 10 条
+window.addEventListener('load', renderLibrary);  // 脚本全部就绪后再补一次，避免加载时序导致空白
 showTab('query');
