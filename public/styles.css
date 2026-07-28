@@ -59,17 +59,6 @@ body {
 .screen { flex: 1; padding: 16px; overflow-y: auto; }
 .state.hidden { display: none; }
 
-/* 底栏 */
-.bottombar {
-  height: 42px; flex-shrink: 0;
-  background: linear-gradient(135deg, var(--bar1), var(--bar2));
-  position: relative; overflow: hidden;
-}
-.bottombar::before {
-  content: ""; position: absolute; width: 100px; height: 100px;
-  border-radius: 50%; background: #fff; opacity: .06; top: 10px; left: -20px;
-}
-
 /* 搜索卡片 */
 .search-card {
   background: #fff; border-radius: 14px; padding: 12px;
@@ -237,3 +226,67 @@ body {
   font-size: 14px; font-weight: 600; margin-bottom: 14px;
   box-shadow: 0 2px 10px rgba(60,130,200,.15);
 }
+
+/* 底部双 tab */
+.bottombar {
+  height: 54px; flex-shrink: 0;
+  background: linear-gradient(135deg, var(--bar1), var(--bar2));
+  position: relative; overflow: hidden;
+  display: flex;
+}
+.bottombar::before {
+  content: ""; position: absolute; width: 100px; height: 100px;
+  border-radius: 50%; background: #fff; opacity: .06; top: 8px; left: -20px;
+}
+.tabbar { display: flex; width: 100%; height: 100%; position: relative; z-index: 1; }
+.tab {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  color: rgba(255,255,255,.82); font-size: 15px; font-weight: 600;
+  cursor: pointer; position: relative; letter-spacing: 1px;
+  transition: color .15s;
+}
+.tab.active { color: #fff; }
+.tab.active::after {
+  content: ""; position: absolute; bottom: 8px; width: 30px; height: 3px;
+  border-radius: 2px; background: #fff;
+}
+
+/* 近义词库 */
+.lib-wrap { display: flex; flex-direction: column; gap: 22px; padding-bottom: 12px; }
+.lib-head {
+  font-size: 15px; font-weight: 700; color: #234E78; margin-bottom: 12px;
+  display: flex; align-items: center; gap: 6px;
+}
+.lib-head::before {
+  content: ""; width: 4px; height: 15px; border-radius: 2px;
+  background: var(--blue); display: inline-block;
+}
+.lib-head-row { display: flex; align-items: center; justify-content: space-between; }
+.lib-refresh {
+  font-size: 13px; color: var(--blue); font-weight: 600; cursor: pointer;
+  padding: 4px 10px; border: 1px solid #CFE0F0; border-radius: 14px; background: #fff;
+}
+.lib-refresh:active { background: #EAF3FC; }
+.lib-list { display: flex; flex-direction: column; gap: 10px; }
+.lib-item {
+  background: #fff; border: 1px solid #EDEFF3; border-radius: 12px;
+  padding: 13px 14px; cursor: pointer; box-shadow: 0 2px 8px rgba(60,130,200,.06);
+  transition: transform .12s;
+}
+.lib-item:active { transform: scale(.99); }
+.lib-title { font-size: 15px; font-weight: 700; color: var(--ink); }
+.lib-sub { font-size: 12.5px; color: var(--sub); margin-top: 4px; }
+.lib-empty {
+  font-size: 13px; color: var(--sub); background: #fff;
+  border-radius: 12px; padding: 14px; text-align: center;
+}
+
+/* 发音按钮（音标后） */
+.wc-speak {
+  border: none; background: rgba(55,138,221,.10); color: var(--blue);
+  width: 26px; height: 26px; border-radius: 50%; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 0; margin-left: 6px; align-self: center; vertical-align: middle;
+}
+.wc-speak:active { background: rgba(55,138,221,.22); }
+.wc-speak .sp-ico { display: block; }

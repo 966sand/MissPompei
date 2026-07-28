@@ -52,11 +52,37 @@
 
       <!-- 结果状态 -->
       <section class="state hidden" id="state-result"></section>
+
+      <!-- 近义词库 -->
+      <section class="state hidden" id="state-library">
+        <div class="lib-wrap">
+          <div class="lib-section">
+            <div class="lib-head">查询过的</div>
+            <div class="lib-list" id="lib-recent"></div>
+          </div>
+          <div class="lib-section">
+            <div class="lib-head-row">
+              <span class="lib-head">热门近义词</span>
+              <span class="lib-refresh" id="libRefresh">↻ 换一批</span>
+            </div>
+            <div class="lib-list" id="lib-popular"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 库中点开的详情 -->
+      <section class="state hidden" id="state-detail"></section>
     </main>
 
-    <footer class="bottombar"></footer>
+    <footer class="bottombar">
+      <div class="tabbar">
+        <div class="tab active" id="tabQuery">查近义词</div>
+        <div class="tab" id="tabLib">近义词库</div>
+      </div>
+    </footer>
   </div>
 
+  <script src="/popular-data.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

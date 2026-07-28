@@ -1,24 +1,62 @@
-// app.js — Miss Pompei 前端交互（待输入 / 加载 / 结果 三态）
+// app.js — Miss Pompei 前端交互（查近义词 / 近义词库 / 发音）
 const $ = (s) => document.querySelector(s);
 const stateInput = $('#state-input');
 const stateLoading = $('#state-loading');
 const stateResult = $('#state-result');
+const stateLibrary = $('#state-library');
+const stateDetail = $('#state-detail');
 const q = $('#q');
 const go = $('#go');
 const tip = $('#tip');
 const recentList = $('#recent');
 const backBtn = $('#backBtn');
+const tabQuery = $('#tabQuery');
+const tabLib = $('#tabLib');
+const libRecent = $('#lib-recent');
+const libPopular = $('#lib-popular');
+const libRefresh = $('#libRefresh');
 const RECENT_KEY = 'ms_recent';
 
 const CN_RE = /[㐀-䶿一-鿿]/g;
 const ACCENTS = ['var(--blue)', 'var(--green)', 'var(--orange)'];
+const SPEAKER = '<svg class="sp-ico" viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z"/></svg>';
+
+let currentTab = 'query';
+let backTarget = '';   // 'input' | 'library'
+let popPage = 0;
 
 function showState(name) {
   stateInput.classList.toggle('hidden', name !== 'input');
   stateLoading.classList.toggle('hidden', name !== 'loading');
   stateResult.classList.toggle('hidden', name !== 'result');
-  // 返回按钮：仅在结果页显示（待输入页用应用名/输入区即可）
   backBtn.classList.toggle('hidden', name !== 'result');
+}
+
+// 主切换：查近义词 / 近义词库
+function showTab(tab) {
+  currentTab = tab;
+  [stateInput, stateLoading, stateResult, stateLibrary, stateDetail]
+    .forEach((s) => s.classList.add('hidden'));
+  tabQuery.classList.toggle('active', tab === 'query');
+  tabLib.classList.toggle('active', tab === 'library');
+  if (tab === 'query') {
+    showState('input');
+  } else {
+    backTarget = '';
+    backBtn.classList.add('hidden');
+    renderLibrary();
+    stateLibrary.classList.remove('hidden');
+  }
+}
+
+// 从库中点开某条，复用结果渲染，显示完整辨析
+function showDetail(data) {
+  renderResult(data, stateDetail);
+  [stateInput, stateLoading, stateResult, stateLibrary]
+    .forEach((s) => s.classList.add('hidden'));
+  stateDetail.classList.remove('hidden');
+  backTarget = 'library';
+  backBtn.classList.remove('hidden');
 }
 
 function setTip(msg) {
@@ -57,7 +95,7 @@ async function run() {
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.error || '请求失败');
     renderResult(data);
-    pushRecent(input);
+    pushRecent(input, data);
     showState('result');
   } catch (e) {
     showState('input');
@@ -65,7 +103,7 @@ async function run() {
   }
 }
 
-// ---------- 渲染：单词卡片 ----------
+// ---------- 渲染：单词卡片（含发音按钮） ----------
 function wordCard(w, accent) {
   const ex = (w.examples || []).map((e, i) => `
     <div class="ex">
@@ -77,6 +115,7 @@ function wordCard(w, accent) {
       <div class="wc-head">
         <span class="wc-word">${esc(w.word)}</span>
         <span class="wc-phon">${esc(w.phonetic)}</span>
+        <button class="wc-speak" data-word="${esc(w.word)}" title="英式发音" aria-label="英式发音">${SPEAKER}</button>
         <span class="wc-pos">${esc(w.pos)}</span>
       </div>
       <div class="wc-cn">${esc(w.cn_meaning)}</div>
@@ -86,7 +125,8 @@ function wordCard(w, accent) {
 }
 
 // ---------- 渲染：场景1（单词 + 同义词） ----------
-function renderSingle(data) {
+function renderSingle(data, target) {
+  target = target || stateResult;
   const p = data.primary || {};
   const syn = (data.synonyms || [])
     .map((w) => wordCard(w, 'var(--green)')).join('');
@@ -110,7 +150,7 @@ function renderSingle(data) {
     </div>`).join('');
 
   const synCount = (data.synonyms || []).length;
-  stateResult.innerHTML = `
+  target.innerHTML = `
     <div class="result-scroll">
       <div class="result-summary">${esc(p.word)}单词有${synCount}个近义词</div>
       ${wordCard(p, 'var(--blue)')}
@@ -130,7 +170,8 @@ function renderSingle(data) {
 }
 
 // ---------- 渲染：场景2（多词对比） ----------
-function renderMulti(data) {
+function renderMulti(data, target) {
+  target = target || stateResult;
   const words = (data.words || [])
     .map((w, i) => wordCard(w, ACCENTS[i % ACCENTS.length])).join('');
   const a = data.analysis || {};
@@ -152,7 +193,7 @@ function renderMulti(data) {
   }).join('');
 
   const wCount = (data.words || []).length;
-  stateResult.innerHTML = `
+  target.innerHTML = `
     <div class="result-scroll">
       <div class="result-summary">本次一共对比${wCount}个单词</div>
       ${words}
@@ -166,38 +207,120 @@ function renderMulti(data) {
     </div>`;
 }
 
-function renderResult(data) {
-  if (data.mode === 'multi') renderMulti(data);
-  else renderSingle(data);
+function renderResult(data, target) {
+  if (data.mode === 'multi') renderMulti(data, target);
+  else renderSingle(data, target);
 }
 
-// ---------- 最近查询 ----------
+// ---------- 最近查询（待输入页） ----------
 function getRecent() {
   try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); }
   catch { return []; }
 }
-function pushRecent(v) {
-  const arr = getRecent().filter((x) => x !== v);
-  arr.unshift(v);
-  localStorage.setItem(RECENT_KEY, JSON.stringify(arr.slice(0, 6)));
+function pushRecent(input, data) {
+  const arr = getRecent().filter((x) => x.input !== input);
+  arr.unshift({ input, data });
+  localStorage.setItem(RECENT_KEY, JSON.stringify(arr.slice(0, 10)));
   renderRecent();
 }
 function renderRecent() {
   const arr = getRecent();
   recentList.innerHTML = arr.length
-    ? arr.map((x) => `<li class="recent-item">${esc(x)}</li>`).join('')
+    ? arr.map((x) => `<li class="recent-item">${esc(x.input)}</li>`).join('')
     : '<li class="recent-empty">暂无记录</li>';
   recentList.querySelectorAll('.recent-item').forEach((li, i) => {
-    li.addEventListener('click', () => { q.value = arr[i]; setTip(''); run(); });
+    li.addEventListener('click', () => { q.value = arr[i].input; setTip(''); run(); });
   });
+}
+
+// ---------- 近义词库 ----------
+function titleOf(d) {
+  if (d.mode === 'multi') {
+    return (d.words || []).map((w) => w.word).join(' / ');
+  }
+  const p = d.primary || {};
+  const syns = (d.synonyms || []).map((w) => w.word).join(', ');
+  return p.word + (syns ? ' → ' + syns : '');
+}
+function subOf(d) {
+  if (d.mode === 'multi') {
+    return '对比 ' + (d.words || []).length + ' 个单词';
+  }
+  return (d.primary?.cn_meaning || '') + ' · 有 ' + (d.synonyms || []).length + ' 个近义词';
+}
+function renderLibrary() {
+  renderLibRecent();
+  renderLibPopular();
+}
+function renderLibRecent() {
+  const arr = getRecent();
+  if (!arr.length) {
+    libRecent.innerHTML = '<div class="lib-empty">还没有查询记录，去「查近义词」试试吧</div>';
+    return;
+  }
+  libRecent.innerHTML = arr.map((r, i) => `
+    <div class="lib-item" data-i="${i}">
+      <div class="lib-title">${esc(titleOf(r.data))}</div>
+      <div class="lib-sub">${esc(subOf(r.data))}</div>
+    </div>`).join('');
+  libRecent.querySelectorAll('.lib-item').forEach((el) => {
+    el.addEventListener('click', () => showDetail(arr[+el.dataset.i].data));
+  });
+}
+function renderLibPopular() {
+  const all = (window.POPULAR_DATA || []);
+  const batches = Math.ceil(all.length / 10) || 1;
+  if (popPage >= batches) popPage = 0;
+  const batch = all.slice(popPage * 10, popPage * 10 + 10);
+  if (!batch.length) {
+    libPopular.innerHTML = '<div class="lib-empty">暂无热门数据</div>';
+    return;
+  }
+  libPopular.innerHTML = batch.map((d, i) => `
+    <div class="lib-item" data-i="${i}">
+      <div class="lib-title">${esc(titleOf(d))}</div>
+      <div class="lib-sub">${esc(subOf(d))}</div>
+    </div>`).join('');
+  libPopular.querySelectorAll('.lib-item').forEach((el) => {
+    el.addEventListener('click', () => showDetail(batch[+el.dataset.i]));
+  });
+}
+
+// ---------- 发音（英式 en-GB） ----------
+function speak(word) {
+  if (!('speechSynthesis' in window)) {
+    alert('当前浏览器不支持语音发音');
+    return;
+  }
+  try {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(word);
+    u.lang = 'en-GB';
+    u.rate = 0.9;
+    const v = (speechSynthesis.getVoices() || [])
+      .find((vv) => /en[-_]GB/i.test(vv.lang) || /British|UK/i.test(vv.name));
+    if (v) u.voice = v;
+    speechSynthesis.speak(u);
+  } catch (e) { /* 忽略 */ }
+}
+if ('speechSynthesis' in window) {
+  speechSynthesis.getVoices();
+  speechSynthesis.onvoiceschanged = () => speechSynthesis.getVoices();
 }
 
 // ---------- 事件绑定 ----------
 go.addEventListener('click', run);
 q.addEventListener('keydown', (e) => { if (e.key === 'Enter') run(); });
-$('#appname').addEventListener('click', () => { setTip(''); showState('input'); });
-// 结果页左上角返回按钮：回到待输入页重新查询
-backBtn.addEventListener('click', () => { setTip(''); showState('input'); });
+$('#appname').addEventListener('click', () => { setTip(''); showTab('query'); });
+backBtn.addEventListener('click', () => {
+  setTip('');
+  if (backTarget === 'library') showTab('library');
+  else showState('input');
+});
+tabQuery.addEventListener('click', () => showTab('query'));
+tabLib.addEventListener('click', () => showTab('library'));
+libRefresh.addEventListener('click', () => { popPage++; renderLibPopular(); });
+
 // 帮助气泡（右上角 ? 点击，不切换页面）
 const helpBtn = $('#helpBtn');
 const helpBubble = $('#helpBubble');
@@ -205,7 +328,10 @@ helpBtn.addEventListener('click', (e) => {
   e.stopPropagation();
   helpBubble.classList.toggle('hidden');
 });
+// 文档点击：发音按钮 + 关闭帮助气泡
 document.addEventListener('click', (e) => {
+  const sp = e.target.closest('.wc-speak');
+  if (sp) { e.stopPropagation(); speak(sp.dataset.word); return; }
   if (helpBubble.classList.contains('hidden')) return;
   if (e.target === helpBtn || helpBubble.contains(e.target)) return;
   helpBubble.classList.add('hidden');
@@ -216,4 +342,4 @@ document.querySelectorAll('.tag').forEach((t) => {
 
 // ---------- 初始化 ----------
 renderRecent();
-showState('input');
+showTab('query');
