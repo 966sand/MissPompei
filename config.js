@@ -17,5 +17,5 @@ loadEnv();
 export const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || '';
 export const DEEPSEEK_API_URL =
   process.env.DEEPSEEK_API_URL || 'https://api.deepseek.com/chat/completions';
-export const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash';
+export const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
 export const PORT = Number(process.env.PORT) || 3000;
