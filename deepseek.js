@@ -1,16 +1,40 @@
 // deepseek.js — 调用 DeepSeek（OpenAI 兼容接口），解析并兜底为 JSON
 import { DEEPSEEK_API_KEY, DEEPSEEK_API_URL, DEEPSEEK_MODEL } from './config.js';
 
-function parseModelJSON(content) {
-  let s = (content || '').trim();
-  // 兼容模型偶尔用 ```json ... ``` 包裹的情况
-  const fenced = s.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  if (fenced) s = fenced[1].trim();
-  try {
-    return JSON.parse(s);
-  } catch {
-    throw new Error('模型返回的不是有效 JSON');
+// 针对被 max_tokens 截断的残缺 JSON，尝试在末尾补括号使其可解析
+function repairJSON(s) {
+  for (const tail of ['', '}', ']}', ']', '}]', '}]}']) {
+    try {
+      JSON.parse(s + tail);
+      return s + tail;
+    } catch (e) {}
   }
+  return s;
+}
+
+function parseModelJSON(content) {
+  const raw = (content || '').trim();
+  const candidates = [raw];
+  // 去掉 ```json ... ``` 包裹后也试一次
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced) candidates.push(fenced[1].trim());
+  // 只保留第一个 { 到最后一个 }，剥离前后夹带文字
+  const first = raw.indexOf('{');
+  const last = raw.lastIndexOf('}');
+  if (first !== -1 && last > first) candidates.push(raw.slice(first, last + 1));
+
+  for (const cand of candidates) {
+    const s = repairJSON(cand);
+    try {
+      const obj = JSON.parse(s);
+      if (obj && typeof obj === 'object') return obj;
+    } catch (e) {
+      // 试下一个候选
+    }
+  }
+  // 全部失败：把原始内容前 200 字符带出，便于定位
+  const snippet = raw.slice(0, 200);
+  throw new Error('模型返回的不是有效 JSON。原始内容前200字符：' + snippet);
 }
 
 // 单次请求（30s 超时）
