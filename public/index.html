@@ -40,6 +40,11 @@
           <div class="recent-label">最近查询</div>
           <ul class="recent-list" id="recent"></ul>
         </div>
+
+        <div class="popular">
+          <div class="recent-label">热门近义词</div>
+          <div class="popular-list" id="pop-input"></div>
+        </div>
       </section>
 
       <!-- 加载中状态 -->
@@ -55,23 +60,22 @@
 
       <!-- 近义词库 -->
       <section class="state hidden" id="state-library">
-        <div class="lib-wrap">
-          <div class="lib-section">
-            <div class="lib-head">查询过的</div>
-            <div class="lib-list" id="lib-recent"></div>
-          </div>
-          <div class="lib-section">
-            <div class="lib-head-row">
-              <span class="lib-head">热门近义词</span>
-              <span class="lib-refresh" id="libRefresh">↻ 换一批</span>
-            </div>
-            <div class="lib-list" id="lib-popular"></div>
-          </div>
-
-          <div class="lib-section">
-            <div class="lib-head">场景词单</div>
-            <div id="lib-scene"></div>
-          </div>
+        <div class="lib-tabs">
+          <div class="lib-tab active" data-tab="recent" id="tabRecent">查询过的</div>
+          <div class="lib-tab" data-tab="fav" id="tabFav">我的收藏</div>
+          <div class="lib-tab" data-tab="scene" id="tabScene">场景单词</div>
+        </div>
+        <div class="lib-panel" id="panel-recent">
+          <div class="lib-list" id="lib-recent"></div>
+          <div class="lib-empty" id="lib-recent-empty" style="display:none">还没有查询记录，去「查近义词」试试吧</div>
+        </div>
+        <div class="lib-panel hidden" id="panel-fav">
+          <div class="lib-review" id="lib-review" style="display:none">开始复习（待复习 <span id="reviewBadge2">0</span> 个）</div>
+          <div class="lib-list" id="lib-fav"></div>
+          <div class="lib-empty" id="lib-fav-empty" style="display:none">收藏后这里会出现生词本，点结果页「☆ 收藏」加入复习计划</div>
+        </div>
+        <div class="lib-panel hidden" id="panel-scene">
+          <div id="lib-scene"></div>
         </div>
       </section>
 
@@ -88,6 +92,17 @@
         <div class="tab" id="tabLib">近义词库</div>
       </div>
     </footer>
+  </div>
+
+  <!-- 分享长图弹层 -->
+  <div class="share-mask hidden" id="shareMask">
+    <div class="share-card">
+      <canvas id="shareCanvas" width="640" height="880"></canvas>
+      <div class="share-actions">
+        <button class="rev-btn remember" id="shareDownload">下载图片</button>
+        <button class="rev-btn forget" id="shareClose">关闭</button>
+      </div>
+    </div>
   </div>
 
   <script src="/popular-data.js"></script>

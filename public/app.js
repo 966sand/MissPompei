@@ -176,7 +176,7 @@ function renderSingle(data, target) {
   const synCount = (data.synonyms || []).length;
   target.innerHTML = `
     <div class="result-scroll">
-      <div class="result-summary"><span class="rs-text">${esc(p.word)}单词有${synCount}个近义词</span>${favBtnHtml()}</div>
+      <div class="result-summary"><span class="rs-text">${esc(p.word)}单词有${synCount}个近义词</span><span class="rs-btns">${favBtnHtml()}<button class="share-img-btn" data-act="share">🖼 分享图</button></span></div>
       ${wordCard(p, 'var(--blue)')}
       <div class="syn-title">同义词</div>
       ${syn}
@@ -299,18 +299,69 @@ function renderFavSection() {
 function renderScene() {
   const wrap = document.getElementById('lib-scene');
   if (!wrap) return;
-  const all = window.POPULAR_DATA || [];
   wrap.innerHTML = SCENE.map((s) => {
-    const items = s.idx.map((i) => all[i]).filter(Boolean).map((d) => {
-      const w = (d.primary && d.primary.word) || '';
-      return `<div class="lib-item" data-scene="${esc(s.name)}|${esc(w)}">
-        <div class="lib-title">${esc(titleOf(d))}</div>
-        <div class="lib-sub">${esc(subOf(d))}</div>
-      </div>`;
-    }).join('');
+    const items = s.words.map((w) => `
+      <div class="lib-item lib-item--word" data-word="${esc(w)}">
+        <div class="lib-title">${esc(w)}</div>
+      </div>`).join('');
     return `<div class="scene-block"><div class="scene-name">${esc(s.name)}</div><div class="lib-list">${items}</div></div>`;
   }).join('');
 }
+function onShareImage() {
+  const d = currentData;
+  if (!d) { alert('请先查询'); return; }
+  const canvas = document.getElementById('shareCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = 640, H = 880;
+  canvas.width = W; canvas.height = H;
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#1E63D0'; ctx.fillRect(0, 0, W, 150);
+  ctx.fillStyle = '#ffffff'; ctx.font = 'bold 40px sans-serif'; ctx.fillText('Miss Pompei', 40, 70);
+  ctx.font = '24px sans-serif'; ctx.fillText('英语近义词辨析助手', 40, 112);
+  const isMulti = d.mode === 'multi';
+  const title = isMulti ? (d.words || []).map((w) => w.word).join(' / ') : ((d.primary && d.primary.word) || '');
+  ctx.fillStyle = '#1f2937'; ctx.font = 'bold 44px sans-serif';
+  ctx.fillText(trunc(ctx, title, W - 80), 40, 235);
+  const pos = isMulti ? '' : ((d.primary && d.primary.pos) || '');
+  const phon = isMulti ? '' : ((d.primary && d.primary.phonetic) || '');
+  if (pos || phon) { ctx.fillStyle = '#6b7890'; ctx.font = '24px sans-serif'; ctx.fillText((pos + '  ' + phon).trim(), 40, 280); }
+  const cn = isMulti ? '' : ((d.primary && d.primary.cn_meaning) || '');
+  if (cn) { ctx.fillStyle = '#2b3a52'; ctx.font = '26px sans-serif'; ctx.fillText(trunc(ctx, cn, W - 80), 40, 330); }
+  const syns = isMulti ? (d.words || []).map((w) => w.word).join('、') : ((d.synonyms || []).map((w) => w.word).join('、'));
+  if (syns) {
+    ctx.fillStyle = '#1FA15A'; ctx.font = 'bold 26px sans-serif'; ctx.fillText('近义词', 40, 400);
+    ctx.fillStyle = '#1f2937'; ctx.font = '26px sans-serif'; ctx.fillText(trunc(ctx, syns, W - 80), 40, 440);
+  }
+  const summary = (d.analysis && d.analysis.summary) || '';
+  if (summary) {
+    ctx.fillStyle = '#2b3a52'; ctx.font = '24px sans-serif';
+    const lines = wrapText(ctx, summary, W - 80);
+    let y = 510;
+    lines.slice(0, 7).forEach((ln) => { ctx.fillText(ln, 40, y); y += 36; });
+  }
+  ctx.fillStyle = '#9aa7bd'; ctx.font = '22px sans-serif';
+  ctx.fillText('微信搜索「Miss Pompei」体验完整近义词辨析', 40, H - 40);
+  document.getElementById('shareMask').classList.remove('hidden');
+}
+function trunc(ctx, text, maxW) {
+  text = String(text || '');
+  if (ctx.measureText(text).width <= maxW) return text;
+  let t = text;
+  while (t.length > 1 && ctx.measureText(t + '…').width > maxW) t = t.slice(0, -1);
+  return t + '…';
+}
+function wrapText(ctx, text, maxW) {
+  text = String(text || '');
+  const chars = text.split('');
+  const lines = []; let line = '';
+  for (const c of chars) {
+    if (ctx.measureText(line + c).width > maxW && line) { lines.push(line); line = c; }
+    else line += c;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
 function showReview() {
   const now = Date.now();
   const due = favCache.filter((r) => (r.nextReview || 0) <= now).slice(0, 30);
@@ -401,10 +452,19 @@ function subOf(d) {
   return (d.primary?.cn_meaning || '') + ' · 有 ' + (d.synonyms || []).length + ' 个近义词';
 }
 function renderLibrary() {
-  renderLibRecent();
-  renderLibPopular();
-  renderFavSection();
-  renderScene();
+  if (libTab === 'scene') renderScene();
+  else if (libTab === 'fav') renderFavSection();
+  else renderLibRecent();
+  showLibPanel();
+}
+function showLibPanel() {
+  const map = { recent: 'panel-recent', fav: 'panel-fav', scene: 'panel-scene' };
+  ['recent', 'fav', 'scene'].forEach((t) => {
+    const p = document.getElementById(map[t]);
+    if (p) p.classList.toggle('hidden', t !== libTab);
+    const tb = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
+    if (tb) tb.classList.toggle('active', t === libTab);
+  });
 }
 function renderLibRecent() {
   const arr = getRecent();
@@ -421,27 +481,24 @@ function renderLibRecent() {
     el.addEventListener('click', () => showDetail(arr[+el.dataset.i].data));
   });
 }
-function renderLibPopular() {
-  const all = (window.POPULAR_DATA || []);
-  const batches = Math.ceil(all.length / 10) || 1;
-  if (popPage >= batches) popPage = 0;
-  const batch = all.slice(popPage * 10, popPage * 10 + 10);
-  if (!batch.length) {
-    // 数据可能尚未就绪，稍后重试一次（避免脚本加载时序导致空白）
-    if (all.length === 0 && !renderLibPopular._retry) {
-      renderLibPopular._retry = true;
-      setTimeout(() => { renderLibPopular._retry = false; renderLibrary(); }, 400);
+function renderPopInput() {
+  const el = document.getElementById('pop-input');
+  if (!el) return;
+  const all = (window.POPULAR_DATA || []).slice(0, 10);
+  if (!all.length) {
+    if (!renderPopInput._retry) {
+      renderPopInput._retry = true;
+      setTimeout(() => { renderPopInput._retry = false; renderPopInput(); }, 400);
     }
-    libPopular.innerHTML = '<div class="lib-empty">暂无热门数据</div>';
+    el.innerHTML = '<div class="lib-empty">暂无热门数据</div>';
     return;
   }
-  libPopular.innerHTML = batch.map((d, i) => `
-    <div class="lib-item" data-i="${i}">
-      <div class="lib-title">${esc(titleOf(d))}</div>
-      <div class="lib-sub">${esc(subOf(d))}</div>
-    </div>`).join('');
-  libPopular.querySelectorAll('.lib-item').forEach((el) => {
-    el.addEventListener('click', () => showDetail(batch[+el.dataset.i]));
+  el.innerHTML = all.map((d) => {
+    const input = d.__input || (d.mode === 'multi' ? (d.words || []).map((w) => w.word).join(' ') : ((d.primary && d.primary.word) || ''));
+    return `<span class="pop-item" data-pop="${esc(input)}">${esc(titleOf(d))}</span>`;
+  }).filter(Boolean).join('');
+  el.querySelectorAll('.pop-item').forEach((sp) => {
+    sp.addEventListener('click', () => { q.value = sp.dataset.pop; setTip(''); run(); });
   });
 }
 
@@ -478,7 +535,22 @@ backBtn.addEventListener('click', () => {
 });
 tabQuery.addEventListener('click', () => showTab('query'));
 tabLib.addEventListener('click', () => showTab('library'));
-libRefresh.addEventListener('click', () => { popPage++; renderLibPopular(); });
+if (libRefresh) libRefresh.addEventListener('click', () => { popPage++; renderPopInput(); });
+['recent', 'fav', 'scene'].forEach((t) => {
+  const el = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
+  if (el) el.addEventListener('click', () => { libTab = t; renderLibrary(); });
+});
+const libReview = document.getElementById('lib-review');
+if (libReview) libReview.addEventListener('click', showReview);
+const shareDownload = document.getElementById('shareDownload');
+if (shareDownload) shareDownload.addEventListener('click', () => {
+  const canvas = document.getElementById('shareCanvas');
+  const url = canvas.toDataURL('image/png');
+  const a = document.createElement('a');
+  a.href = url; a.download = 'miss-pompei.png'; a.click();
+});
+const shareClose = document.getElementById('shareClose');
+if (shareClose) shareClose.addEventListener('click', () => document.getElementById('shareMask').classList.add('hidden'));
 
 // 帮助气泡（右上角 ? 点击，不切换页面）
 const helpBtn = $('#helpBtn');
@@ -497,11 +569,16 @@ document.addEventListener('click', (e) => {
     if (a === 'r-remember') { advanceReview(true); return; }
     if (a === 'r-forget') { advanceReview(false); return; }
     if (a === 'r-back') { libView = 'library'; paintLibrary(); return; }
+    if (a === 'share') { onShareImage(); return; }
   }
   const fav = e.target.closest('[data-fav]');
   if (fav) { const r = favCache[+fav.dataset.fav]; if (r) showDetail(r.data); return; }
   const sp = e.target.closest('.wc-speak');
   if (sp) { e.stopPropagation(); speak(sp.dataset.word); return; }
+  const scene = e.target.closest('[data-word]');
+  if (scene) { run(scene.dataset.word); return; }
+  const pop = e.target.closest('[data-pop]');
+  if (pop) { q.value = pop.dataset.pop; setTip(''); run(); return; }
   if (helpBubble.classList.contains('hidden')) return;
   if (e.target === helpBtn || helpBubble.contains(e.target)) return;
   helpBubble.classList.add('hidden');
@@ -512,6 +589,8 @@ document.querySelectorAll('.tag').forEach((t) => {
 
 // ---------- 初始化 ----------
 renderRecent();
-renderLibrary();          // 预渲染库：确保打开即有默认热门 10 条
+favCache = loadFavs();
+renderPopInput();
+renderLibrary();          // 预渲染库：确保打开即有默认内容
 window.addEventListener('load', renderLibrary);  // 脚本全部就绪后再补一次，避免加载时序导致空白
 showTab('query');

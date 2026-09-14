@@ -311,6 +311,39 @@ body {
 /* 场景词单分区标题 */
 .scene-name { color: var(--blue); font-size: 14px; font-weight: 700; margin: 18px 0 10px; }
 
+/* 近义词库顶部 tab 切换 */
+.lib-tabs { display: flex; background: #eef3fb; border-radius: 12px; padding: 4px; margin-bottom: 16px; }
+.lib-tab { flex: 1; text-align: center; padding: 11px 0; font-size: 14px; color: #5b6b82; border-radius: 9px; cursor: pointer; }
+.lib-tab.active { background: #fff; color: #1E63D0; font-weight: 700; box-shadow: 0 1px 4px rgba(30,99,208,0.12); }
+.lib-panel { margin-top: 4px; }
+
+/* 热门近义词（查近义词页） */
+.popular { margin-top: 22px; }
+.popular-list { display: flex; flex-wrap: wrap; }
+.pop-item { background: #fff; border: 1px solid #EDEFF3; border-radius: 10px; padding: 10px 14px; font-size: 13px; color: var(--ink); margin: 0 10px 10px 0; box-shadow: 0 2px 8px rgba(60,130,200,.06); cursor: pointer; }
+.pop-item:active { background: #f3f6fc; }
+
+/* 结果页分享图按钮 */
+.rs-btns { display: inline-flex; align-items: center; gap: 8px; }
+.share-img-btn { padding: 5px 12px; border-radius: 14px; border: none; background: rgba(255,255,255,.28); color: #fff; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.share-img-btn:hover { background: rgba(255,255,255,.45); }
+
+/* 我的收藏·复习入口 */
+.lib-review { background: linear-gradient(135deg,#7BC043,var(--green)); color: #fff; font-size: 14px; font-weight: 600; text-align: center; padding: 13px; border-radius: 12px; margin-bottom: 14px; cursor: pointer; }
+
+/* 场景单词项（纯词） */
+.lib-item--word { padding: 14px 16px; }
+
+/* 分享长图弹层 */
+.share-mask { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 100; }
+.share-card { background: #fff; border-radius: 16px; padding: 16px; max-width: 92vw; }
+.share-card canvas { width: 300px; height: 412px; border-radius: 8px; display: block; box-shadow: 0 4px 16px rgba(0,0,0,.15); }
+.share-actions { display: flex; gap: 12px; margin-top: 14px; }
+.share-actions .rev-btn { flex: 1; border: none; color: #fff; border-radius: 12px; padding: 13px 0; font-size: 15px; font-weight: 700; cursor: pointer; }
+.share-actions .rev-btn.remember { background: linear-gradient(135deg,#2f7bf0,#1E63D0); }
+.share-actions .rev-btn.forget { background: linear-gradient(135deg,#f0884a,#E08A1E); }
+.share-actions .rev-btn:active { opacity: .9; }
+
 /* 发音按钮（音标后） */
 .wc-speak {
   border: none; background: rgba(55,138,221,.10); color: var(--blue);
