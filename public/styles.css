@@ -337,7 +337,13 @@ body {
 /* 分享长图弹层 */
 .share-mask { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 100; }
 .share-card { background: #fff; border-radius: 16px; padding: 16px; max-width: 92vw; }
-.share-card canvas { width: 300px; height: 412px; border-radius: 8px; display: block; box-shadow: 0 4px 16px rgba(0,0,0,.15); }
+.share-card canvas, .share-card .share-img {
+  width: 300px; height: 412px; border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.15); background: #fff;
+}
+.share-card .share-img { display: block; }
+.share-card .share-img[src=""], .share-card .share-img:not([src]) { display: none; }
+.share-mask.hidden { display: none; }
 .share-actions { display: flex; gap: 12px; margin-top: 14px; }
 .share-actions .rev-btn { flex: 1; border: none; color: #fff; border-radius: 12px; padding: 13px 0; font-size: 15px; font-weight: 700; cursor: pointer; }
 .share-actions .rev-btn.remember { background: linear-gradient(135deg,#2f7bf0,#1E63D0); }

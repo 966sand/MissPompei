@@ -70,7 +70,7 @@
           <div class="lib-empty" id="lib-recent-empty" style="display:none">还没有查询记录，去「查近义词」试试吧</div>
         </div>
         <div class="lib-panel hidden" id="panel-fav">
-          <div class="lib-review" id="lib-review" style="display:none">开始复习（待复习 <span id="reviewBadge2">0</span> 个）</div>
+          <div class="lib-review" id="lib-review" style="display:none">开始复习（待复习 <span id="reviewBadge">0</span> 个）</div>
           <div class="lib-list" id="lib-fav"></div>
           <div class="lib-empty" id="lib-fav-empty" style="display:none">收藏后这里会出现生词本，点结果页「☆ 收藏」加入复习计划</div>
         </div>
@@ -97,7 +97,8 @@
   <!-- 分享长图弹层 -->
   <div class="share-mask hidden" id="shareMask">
     <div class="share-card">
-      <canvas id="shareCanvas" width="640" height="880"></canvas>
+      <canvas id="shareCanvas" width="320" height="440" style="display:none"></canvas>
+      <img id="shareImg" class="share-img" alt="分享卡片" />
       <div class="share-actions">
         <button class="rev-btn remember" id="shareDownload">下载图片</button>
         <button class="rev-btn forget" id="shareClose">关闭</button>

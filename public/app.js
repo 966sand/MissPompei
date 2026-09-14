@@ -311,36 +311,47 @@ function onShareImage() {
   const d = currentData;
   if (!d) { alert('请先查询'); return; }
   const canvas = document.getElementById('shareCanvas');
+  const img = document.getElementById('shareImg');
   const ctx = canvas.getContext('2d');
-  const W = 640, H = 880;
-  canvas.width = W; canvas.height = H;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const W = 320, H = 440;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  ctx.scale(dpr, dpr);
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = '#1E63D0'; ctx.fillRect(0, 0, W, 150);
-  ctx.fillStyle = '#ffffff'; ctx.font = 'bold 40px sans-serif'; ctx.fillText('Miss Pompei', 40, 70);
-  ctx.font = '24px sans-serif'; ctx.fillText('英语近义词辨析助手', 40, 112);
+  ctx.fillStyle = '#1E63D0'; ctx.fillRect(0, 0, W, 75);
+  ctx.fillStyle = '#ffffff'; ctx.font = 'bold 20px sans-serif'; ctx.fillText('Miss Pompei', 20, 35);
+  ctx.font = '12px sans-serif'; ctx.fillText('英语近义词辨析助手', 20, 56);
   const isMulti = d.mode === 'multi';
   const title = isMulti ? (d.words || []).map((w) => w.word).join(' / ') : ((d.primary && d.primary.word) || '');
-  ctx.fillStyle = '#1f2937'; ctx.font = 'bold 44px sans-serif';
-  ctx.fillText(trunc(ctx, title, W - 80), 40, 235);
+  ctx.fillStyle = '#1f2937'; ctx.font = 'bold 22px sans-serif';
+  ctx.fillText(trunc(ctx, title, W - 40), 20, 118);
   const pos = isMulti ? '' : ((d.primary && d.primary.pos) || '');
   const phon = isMulti ? '' : ((d.primary && d.primary.phonetic) || '');
-  if (pos || phon) { ctx.fillStyle = '#6b7890'; ctx.font = '24px sans-serif'; ctx.fillText((pos + '  ' + phon).trim(), 40, 280); }
+  if (pos || phon) { ctx.fillStyle = '#6b7890'; ctx.font = '12px sans-serif'; ctx.fillText((pos + '  ' + phon).trim(), 20, 140); }
   const cn = isMulti ? '' : ((d.primary && d.primary.cn_meaning) || '');
-  if (cn) { ctx.fillStyle = '#2b3a52'; ctx.font = '26px sans-serif'; ctx.fillText(trunc(ctx, cn, W - 80), 40, 330); }
+  if (cn) { ctx.fillStyle = '#2b3a52'; ctx.font = '13px sans-serif'; ctx.fillText(trunc(ctx, cn, W - 40), 20, 165); }
   const syns = isMulti ? (d.words || []).map((w) => w.word).join('、') : ((d.synonyms || []).map((w) => w.word).join('、'));
   if (syns) {
-    ctx.fillStyle = '#1FA15A'; ctx.font = 'bold 26px sans-serif'; ctx.fillText('近义词', 40, 400);
-    ctx.fillStyle = '#1f2937'; ctx.font = '26px sans-serif'; ctx.fillText(trunc(ctx, syns, W - 80), 40, 440);
+    ctx.fillStyle = '#1FA15A'; ctx.font = 'bold 13px sans-serif'; ctx.fillText('近义词', 20, 200);
+    ctx.fillStyle = '#1f2937'; ctx.font = '13px sans-serif'; ctx.fillText(trunc(ctx, syns, W - 40), 20, 220);
   }
   const summary = (d.analysis && d.analysis.summary) || '';
   if (summary) {
-    ctx.fillStyle = '#2b3a52'; ctx.font = '24px sans-serif';
-    const lines = wrapText(ctx, summary, W - 80);
-    let y = 510;
-    lines.slice(0, 7).forEach((ln) => { ctx.fillText(ln, 40, y); y += 36; });
+    ctx.fillStyle = '#2b3a52'; ctx.font = '12px sans-serif';
+    const lines = wrapText(ctx, summary, W - 40);
+    let y = 255;
+    lines.slice(0, 7).forEach((ln) => { ctx.fillText(ln, 20, y); y += 18; });
   }
-  ctx.fillStyle = '#9aa7bd'; ctx.font = '22px sans-serif';
-  ctx.fillText('微信搜索「Miss Pompei」体验完整近义词辨析', 40, H - 40);
+  ctx.fillStyle = '#9aa7bd'; ctx.font = '11px sans-serif';
+  ctx.fillText('微信搜索「Miss Pompei」体验完整辨析', 20, H - 20);
+  try {
+    img.src = canvas.toDataURL('image/png');
+    img.style.display = 'block';
+  } catch (e) {
+    canvas.style.display = 'block';
+    img.style.display = 'none';
+  }
   document.getElementById('shareMask').classList.remove('hidden');
 }
 function trunc(ctx, text, maxW) {
@@ -544,8 +555,8 @@ const libReview = document.getElementById('lib-review');
 if (libReview) libReview.addEventListener('click', showReview);
 const shareDownload = document.getElementById('shareDownload');
 if (shareDownload) shareDownload.addEventListener('click', () => {
-  const canvas = document.getElementById('shareCanvas');
-  const url = canvas.toDataURL('image/png');
+  const img = document.getElementById('shareImg');
+  const url = (img && img.src && img.style.display !== 'none') ? img.src : document.getElementById('shareCanvas').toDataURL('image/png');
   const a = document.createElement('a');
   a.href = url; a.download = 'miss-pompei.png'; a.click();
 });
@@ -576,7 +587,7 @@ document.addEventListener('click', (e) => {
   const sp = e.target.closest('.wc-speak');
   if (sp) { e.stopPropagation(); speak(sp.dataset.word); return; }
   const scene = e.target.closest('[data-word]');
-  if (scene) { run(scene.dataset.word); return; }
+  if (scene) { q.value = scene.dataset.word; setTip(''); run(); return; }
   const pop = e.target.closest('[data-pop]');
   if (pop) { q.value = pop.dataset.pop; setTip(''); run(); return; }
   if (helpBubble.classList.contains('hidden')) return;
