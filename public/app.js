@@ -5,6 +5,7 @@ const stateLoading = $('#state-loading');
 const stateResult = $('#state-result');
 const stateLibrary = $('#state-library');
 const stateDetail = $('#state-detail');
+const stateReview = $('#state-review');
 const q = $('#q');
 const go = $('#go');
 const tip = $('#tip');
@@ -44,7 +45,8 @@ function paintLibrary() {
   stateResult.classList.add('hidden');
   stateLibrary.classList.toggle('hidden', libView !== 'library');
   stateDetail.classList.toggle('hidden', libView !== 'detail');
-  backBtn.classList.toggle('hidden', libView !== 'detail');
+  stateReview.classList.toggle('hidden', libView !== 'review');
+  backBtn.classList.toggle('hidden', !(libView === 'detail' || libView === 'review'));
   if (libView === 'library') renderLibrary();
 }
 
@@ -60,6 +62,8 @@ function showTab(tab) {
 // 从库中点开某条，复用结果渲染，显示完整辨析
 function showDetail(data) {
   libView = 'detail';
+  currentInput = (data && data.primary && data.primary.word) || currentInput;
+  currentData = data;
   renderResult(data, stateDetail);
   paintLibrary();
 }
@@ -159,7 +163,7 @@ function renderSingle(data, target) {
   const synCount = (data.synonyms || []).length;
   target.innerHTML = `
     <div class="result-scroll">
-      <div class="result-summary">${esc(p.word)}单词有${synCount}个近义词</div>
+      <div class="result-summary"><span class="rs-text">${esc(p.word)}单词有${synCount}个近义词</span>${favBtnHtml()}</div>
       ${wordCard(p, 'var(--blue)')}
       <div class="syn-title">同义词</div>
       ${syn}
@@ -219,6 +223,134 @@ function renderResult(data, target) {
   else renderSingle(data, target);
 }
 
+// ---------- 收藏 / 复习 ----------
+function loadFavs() {
+  try { return JSON.parse(localStorage.getItem(FAV_KEY) || '[]'); }
+  catch { return []; }
+}
+function saveFavs(arr) {
+  favCache = arr;
+  try { localStorage.setItem(FAV_KEY, JSON.stringify(arr.slice(0, 200))); } catch { /* ignore */ }
+  renderFavSection();
+  updateFavBtn();
+}
+function isFav(input) { return favCache.some((r) => r.input === input); }
+function favBtnHtml() {
+  const on = isFav(currentInput);
+  return `<button class="fav-btn ${on ? 'on' : ''}" data-act="fav">${on ? '★ 已收藏' : '☆ 收藏'}</button>`;
+}
+function toggleFav() {
+  if (!currentInput) return;
+  if (isFav(currentInput)) removeFav(currentInput);
+  else addFav(currentInput, currentData);
+}
+function addFav(input, data) {
+  const rec = {
+    input, data,
+    level: 0,
+    nextReview: Date.now() + REVIEW_DAYS[0] * 864e5,
+    createdAt: Date.now(), updatedAt: Date.now(),
+  };
+  favCache = favCache.filter((r) => r.input !== input);
+  favCache.unshift(rec);
+  saveFavs(favCache);
+}
+function removeFav(input) {
+  favCache = favCache.filter((r) => r.input !== input);
+  saveFavs(favCache);
+}
+function updateFavBtn() {
+  const btn = document.querySelector('#state-result .fav-btn');
+  if (!btn) return;
+  const on = isFav(currentInput);
+  btn.className = 'fav-btn' + (on ? ' on' : '');
+  btn.textContent = on ? '★ 已收藏' : '☆ 收藏';
+}
+function renderFavSection() {
+  const now = Date.now();
+  const favEl = document.getElementById('lib-fav');
+  if (!favEl) return;
+  if (!favCache.length) {
+    favEl.innerHTML = '<div class="lib-empty">收藏后这里会出现生词本，点结果页「☆ 收藏」加入复习计划</div>';
+  } else {
+    favEl.innerHTML = favCache.map((r, i) => `
+      <div class="lib-item" data-fav="${i}">
+        <div class="lib-title">${esc(titleOf(r.data))}</div>
+        <div class="lib-sub">${esc(subOf(r.data))}</div>
+      </div>`).join('');
+  }
+  const ready = favCache.filter((r) => (r.nextReview || 0) <= now).length;
+  const badge = document.getElementById('reviewBadge');
+  if (badge) badge.textContent = ready > 0 ? '(' + ready + ')' : '';
+}
+function renderScene() {
+  const wrap = document.getElementById('lib-scene');
+  if (!wrap) return;
+  const all = window.POPULAR_DATA || [];
+  wrap.innerHTML = SCENE.map((s) => {
+    const items = s.idx.map((i) => all[i]).filter(Boolean).map((d) => {
+      const w = (d.primary && d.primary.word) || '';
+      return `<div class="lib-item" data-scene="${esc(s.name)}|${esc(w)}">
+        <div class="lib-title">${esc(titleOf(d))}</div>
+        <div class="lib-sub">${esc(subOf(d))}</div>
+      </div>`;
+    }).join('');
+    return `<div class="scene-block"><div class="scene-name">${esc(s.name)}</div><div class="lib-list">${items}</div></div>`;
+  }).join('');
+}
+function showReview() {
+  const now = Date.now();
+  const due = favCache.filter((r) => (r.nextReview || 0) <= now).slice(0, 30);
+  if (!due.length) { alert('暂无待复习'); return; }
+  reviewList = due; reviewIdx = 0;
+  libView = 'review';
+  renderReviewCard();
+  paintLibrary();
+}
+function renderReviewCard() {
+  const rec = reviewList[reviewIdx];
+  if (!rec) { finishReview(); return; }
+  currentInput = rec.input;
+  currentData = rec.data;
+  renderResult(rec.data, stateReview);
+  const bar = `<div class="review-head">
+      <div class="review-progress">复习进度 ${reviewIdx + 1} / ${reviewList.length}</div>
+      <div class="review-word">${esc(rec.input)}</div>
+    </div>
+    <div class="review-actions">
+      <button class="rev-btn forget" data-act="r-forget">忘了 ✗</button>
+      <button class="rev-btn remember" data-act="r-remember">记得 ✓</button>
+    </div>`;
+  stateReview.insertAdjacentHTML('afterbegin', bar);
+}
+function advanceReview(remembered) {
+  const rec = reviewList[reviewIdx];
+  if (!rec) return;
+  let level = rec.level || 0;
+  if (remembered) level = Math.min(level + 1, REVIEW_DAYS.length - 1);
+  else level = 0;
+  rec.level = level;
+  rec.nextReview = Date.now() + REVIEW_DAYS[level] * 864e5;
+  rec.updatedAt = Date.now();
+  const idx = favCache.findIndex((r) => r.input === rec.input);
+  if (idx >= 0) favCache[idx] = rec;
+  try { localStorage.setItem(FAV_KEY, JSON.stringify(favCache.slice(0, 200))); } catch { /* ignore */ }
+  reviewIdx += 1;
+  if (reviewIdx >= reviewList.length) finishReview();
+  else renderReviewCard();
+}
+function finishReview() {
+  const total = reviewList.length;
+  stateReview.innerHTML = `<div class="review-done">
+      <div class="rd-emoji">🎉</div>
+      <div class="rd-title">本轮复习完成</div>
+      <div class="rd-sub">共复习 ${total} 个单词</div>
+      <button class="rev-btn remember wide" data-act="r-back">返回生词本</button>
+    </div>`;
+  reviewList = []; reviewIdx = 0;
+  renderFavSection();
+}
+
 // ---------- 最近查询（待输入页） ----------
 function getRecent() {
   try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); }
@@ -258,6 +390,8 @@ function subOf(d) {
 function renderLibrary() {
   renderLibRecent();
   renderLibPopular();
+  renderFavSection();
+  renderScene();
 }
 function renderLibRecent() {
   const arr = getRecent();
@@ -326,7 +460,7 @@ q.addEventListener('keydown', (e) => { if (e.key === 'Enter') run(); });
 $('#appname').addEventListener('click', () => { setTip(''); queryView = 'input'; showTab('query'); });
 backBtn.addEventListener('click', () => {
   setTip('');
-  if (libView === 'detail') { libView = 'library'; paintLibrary(); }
+  if (libView === 'review' || libView === 'detail') { libView = 'library'; paintLibrary(); }
   else { queryView = 'input'; paintQuery(); }
 });
 tabQuery.addEventListener('click', () => showTab('query'));
@@ -342,6 +476,17 @@ helpBtn.addEventListener('click', (e) => {
 });
 // 文档点击：发音按钮 + 关闭帮助气泡
 document.addEventListener('click', (e) => {
+  const act = e.target.closest('[data-act]');
+  if (act) {
+    const a = act.dataset.act;
+    if (a === 'fav') { toggleFav(); return; }
+    if (a === 'review') { showReview(); return; }
+    if (a === 'r-remember') { advanceReview(true); return; }
+    if (a === 'r-forget') { advanceReview(false); return; }
+    if (a === 'r-back') { libView = 'library'; paintLibrary(); return; }
+  }
+  const fav = e.target.closest('[data-fav]');
+  if (fav) { const r = favCache[+fav.dataset.fav]; if (r) showDetail(r.data); return; }
   const sp = e.target.closest('.wc-speak');
   if (sp) { e.stopPropagation(); speak(sp.dataset.word); return; }
   if (helpBubble.classList.contains('hidden')) return;
