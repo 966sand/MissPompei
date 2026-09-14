@@ -379,16 +379,18 @@ function drawLogo(ctx, x, y, size) {
   ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
 }
 
-// 分享标题：单词助手-xxx和xxx的区别
+// 分享标题：≤2 个词「单词助手：xx、xx的差异」；>2 个词「单词助手：xx、xx等的差异」
 function shareTitle() {
   const d = currentData;
-  if (!d) return '单词助手-近义词辨析';
+  if (!d) return '单词助手：近义词辨析';
   let words = [];
   if (d.mode === 'multi') words = (d.words || []).map((w) => w.word);
   else { const p = (d.primary && d.primary.word) || ''; const syns = (d.synonyms || []).map((w) => w.word); words = [p].concat(syns).filter(Boolean); }
-  const join = (arr) => (arr.length <= 2 ? arr.join('和') : arr.join('、'));
-  const core = words.length ? join(words.slice(0, 4)) : (currentInput || '');
-  return '单词助手-' + core + '的区别';
+  words = words.filter(Boolean);
+  if (!words.length) words = [(currentInput || '').trim()].filter(Boolean);
+  if (!words.length) return '单词助手：近义词辨析';
+  const core = words.length <= 2 ? words.join('、') : (words.slice(0, 2).join('、') + '等');
+  return '单词助手：' + core + '的差异';
 }
 
 function buildShareUrl() {

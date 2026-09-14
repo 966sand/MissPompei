@@ -286,9 +286,10 @@ body {
 .result-summary .rs-text { flex: 1; }
 .fav-btn {
   flex-shrink: 0; padding: 5px 12px; border-radius: 14px; border: none;
-  background: rgba(255,255,255,.28); color: #fff; font-size: 12.5px; font-weight: 600; cursor: pointer;
+  background: #ffffff; color: #1E63D0; font-size: 12.5px; font-weight: 700; cursor: pointer;
+  box-shadow: 0 1px 5px rgba(0,0,0,.12);
 }
-.fav-btn.on { background: #fff; color: var(--orange); }
+.fav-btn.on { background: #F5A623; color: #ffffff; box-shadow: 0 1px 5px rgba(180,110,0,.25); }
 
 /* 复习模式 */
 .review-head { background: #EAF3FC; border-radius: 12px; padding: 12px 14px; margin-bottom: 14px; }
@@ -329,8 +330,8 @@ body {
 
 /* 结果页分享图按钮 */
 .rs-btns { display: inline-flex; align-items: center; gap: 8px; }
-.share-img-btn { padding: 5px 12px; border-radius: 14px; border: none; background: rgba(255,255,255,.28); color: #fff; font-size: 12.5px; font-weight: 600; cursor: pointer; }
-.share-img-btn:hover { background: rgba(255,255,255,.45); }
+.share-img-btn { padding: 5px 12px; border-radius: 14px; border: 1px solid rgba(255,255,255,.85); background: rgba(255,255,255,.14); color: #fff; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.share-img-btn:hover { background: rgba(255,255,255,.3); }
 
 /* 我的收藏·复习入口 */
 .lib-review { background: linear-gradient(135deg,#7BC043,var(--green)); color: #fff; font-size: 14px; font-weight: 600; text-align: center; padding: 13px; border-radius: 12px; margin-bottom: 14px; cursor: pointer; }
