@@ -14,7 +14,6 @@ const backBtn = $('#backBtn');
 const tabQuery = $('#tabQuery');
 const tabLib = $('#tabLib');
 const libRecent = $('#lib-recent');
-const libPopular = $('#lib-popular');
 const libRefresh = $('#libRefresh');
 const RECENT_KEY = 'ms_recent';
 
@@ -176,7 +175,7 @@ function renderSingle(data, target) {
   const synCount = (data.synonyms || []).length;
   target.innerHTML = `
     <div class="result-scroll">
-      <div class="result-summary"><span class="rs-text">${esc(p.word)}单词有${synCount}个近义词</span><span class="rs-btns">${favBtnHtml()}<button class="share-img-btn" data-act="share">🖼 分享图</button></span></div>
+      <div class="result-summary"><span class="rs-text">${esc(p.word)}单词有${synCount}个近义词</span><span class="rs-btns">${favBtnHtml()}<button class="share-img-btn" data-act="share">分享</button></span></div>
       ${wordCard(p, 'var(--blue)')}
       <div class="syn-title">同义词</div>
       ${syn}
@@ -219,7 +218,7 @@ function renderMulti(data, target) {
   const wCount = (data.words || []).length;
   target.innerHTML = `
     <div class="result-scroll">
-      <div class="result-summary">本次一共对比${wCount}个单词</div>
+      <div class="result-summary"><span class="rs-text">本次一共对比${wCount}个单词</span><span class="rs-btns"><button class="share-img-btn" data-act="share">分享</button></span></div>
       ${words}
       <div class="analysis">
         <div class="an-title">整体对比</div>
@@ -307,7 +306,7 @@ function renderScene() {
     return `<div class="scene-block"><div class="scene-name">${esc(s.name)}</div><div class="lib-list">${items}</div></div>`;
   }).join('');
 }
-function onShareImage() {
+function openShareSheet() {
   const d = currentData;
   if (!d) { alert('请先查询'); return; }
   const canvas = document.getElementById('shareCanvas');
@@ -317,34 +316,40 @@ function onShareImage() {
   const W = 320, H = 440;
   canvas.width = W * dpr; canvas.height = H * dpr;
   canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
-  ctx.scale(dpr, dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = '#1E63D0'; ctx.fillRect(0, 0, W, 75);
-  ctx.fillStyle = '#ffffff'; ctx.font = 'bold 20px sans-serif'; ctx.fillText('Miss Pompei', 20, 35);
-  ctx.font = '12px sans-serif'; ctx.fillText('英语近义词辨析助手', 20, 56);
+  // 顶部蓝色块 + logo + 品牌
+  ctx.fillStyle = '#1E63D0'; ctx.fillRect(0, 0, W, 80);
+  drawLogo(ctx, 20, 20, 40);
+  ctx.fillStyle = '#ffffff'; ctx.font = 'bold 19px sans-serif'; ctx.fillText('单词助手', 70, 42);
+  ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.font = '11px sans-serif'; ctx.fillText('英语近义词辨析', 70, 60);
+  // 分享标题
+  const title = shareTitle();
+  ctx.fillStyle = '#1f2937'; ctx.font = 'bold 18px sans-serif'; ctx.fillText(trunc(ctx, title, W - 40), 20, 120);
+  // 主词 / 对比词
   const isMulti = d.mode === 'multi';
-  const title = isMulti ? (d.words || []).map((w) => w.word).join(' / ') : ((d.primary && d.primary.word) || '');
-  ctx.fillStyle = '#1f2937'; ctx.font = 'bold 22px sans-serif';
-  ctx.fillText(trunc(ctx, title, W - 40), 20, 118);
+  const mainWord = isMulti ? (d.words || []).map((w) => w.word).join(' / ') : ((d.primary && d.primary.word) || '');
+  ctx.fillStyle = '#1E63D0'; ctx.font = 'bold 22px sans-serif'; ctx.fillText(trunc(ctx, mainWord, W - 40), 20, 158);
   const pos = isMulti ? '' : ((d.primary && d.primary.pos) || '');
   const phon = isMulti ? '' : ((d.primary && d.primary.phonetic) || '');
-  if (pos || phon) { ctx.fillStyle = '#6b7890'; ctx.font = '12px sans-serif'; ctx.fillText((pos + '  ' + phon).trim(), 20, 140); }
+  if (pos || phon) { ctx.fillStyle = '#6b7890'; ctx.font = '12px sans-serif'; ctx.fillText((pos + '  ' + phon).trim(), 20, 180); }
   const cn = isMulti ? '' : ((d.primary && d.primary.cn_meaning) || '');
-  if (cn) { ctx.fillStyle = '#2b3a52'; ctx.font = '13px sans-serif'; ctx.fillText(trunc(ctx, cn, W - 40), 20, 165); }
+  if (cn) { ctx.fillStyle = '#2b3a52'; ctx.font = '13px sans-serif'; ctx.fillText(trunc(ctx, cn, W - 40), 20, 202); }
   const syns = isMulti ? (d.words || []).map((w) => w.word).join('、') : ((d.synonyms || []).map((w) => w.word).join('、'));
   if (syns) {
-    ctx.fillStyle = '#1FA15A'; ctx.font = 'bold 13px sans-serif'; ctx.fillText('近义词', 20, 200);
-    ctx.fillStyle = '#1f2937'; ctx.font = '13px sans-serif'; ctx.fillText(trunc(ctx, syns, W - 40), 20, 220);
+    ctx.fillStyle = '#1FA15A'; ctx.font = 'bold 13px sans-serif'; ctx.fillText('近义词', 20, 232);
+    ctx.fillStyle = '#1f2937'; ctx.font = '13px sans-serif'; ctx.fillText(trunc(ctx, syns, W - 40), 20, 252);
   }
   const summary = (d.analysis && d.analysis.summary) || '';
   if (summary) {
     ctx.fillStyle = '#2b3a52'; ctx.font = '12px sans-serif';
     const lines = wrapText(ctx, summary, W - 40);
-    let y = 255;
+    let y = 290;
     lines.slice(0, 7).forEach((ln) => { ctx.fillText(ln, 20, y); y += 18; });
   }
   ctx.fillStyle = '#9aa7bd'; ctx.font = '11px sans-serif';
-  ctx.fillText('微信搜索「Miss Pompei」体验完整辨析', 20, H - 20);
+  ctx.fillText('微信搜索「单词助手」体验完整辨析', 20, H - 18);
   try {
     img.src = canvas.toDataURL('image/png');
     img.style.display = 'block';
@@ -352,8 +357,92 @@ function onShareImage() {
     canvas.style.display = 'block';
     img.style.display = 'none';
   }
-  document.getElementById('shareMask').classList.remove('hidden');
+  document.getElementById('shareSheet').classList.remove('hidden');
 }
+
+// 圆角 logo 标志（蓝色方块 + 白色「词」）
+function drawLogo(ctx, x, y, size) {
+  const r = size * 0.25;
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + size, y, x + size, y + size, r);
+  ctx.arcTo(x + size, y + size, x, y + size, r);
+  ctx.arcTo(x, y + size, x, y, r);
+  ctx.arcTo(x, y, x + size, y, r);
+  ctx.closePath();
+  const grad = ctx.createLinearGradient(x, y, x + size, y + size);
+  grad.addColorStop(0, '#2f7be0'); grad.addColorStop(1, '#1E63D0');
+  ctx.fillStyle = grad; ctx.fill();
+  ctx.fillStyle = '#ffffff'; ctx.font = 'bold ' + Math.floor(size * 0.5) + 'px sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('词', x + size / 2, y + size / 2 + 1);
+  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+}
+
+// 分享标题：单词助手-xxx和xxx的区别
+function shareTitle() {
+  const d = currentData;
+  if (!d) return '单词助手-近义词辨析';
+  let words = [];
+  if (d.mode === 'multi') words = (d.words || []).map((w) => w.word);
+  else { const p = (d.primary && d.primary.word) || ''; const syns = (d.synonyms || []).map((w) => w.word); words = [p].concat(syns).filter(Boolean); }
+  const join = (arr) => (arr.length <= 2 ? arr.join('和') : arr.join('、'));
+  const core = words.length ? join(words.slice(0, 4)) : (currentInput || '');
+  return '单词助手-' + core + '的区别';
+}
+
+function buildShareUrl() {
+  const q = (currentInput || '').trim();
+  return 'https://misspompei.onrender.com/' + (q ? ('?q=' + encodeURIComponent(q)) : '');
+}
+
+// 分享动作：朋友圈 / 微信好友 优先调系统分享面板（移动端可直达微信），否则复制链接 + 提示
+async function shareVia(role) {
+  const url = buildShareUrl();
+  const title = shareTitle();
+  if (role !== 'link' && navigator.share) {
+    try {
+      await navigator.share({ title, text: title, url });
+      closeShareSheet();
+      return;
+    } catch (e) { /* 用户取消或不可用，降级复制链接 */ }
+  }
+  copyText(url);
+  const tip = role === 'timeline' ? '链接已复制，请粘贴到朋友圈' : role === 'session' ? '链接已复制，请发送给微信好友' : '链接已复制';
+  toast(tip);
+  closeShareSheet();
+}
+
+function copyText(text) {
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text);
+      return;
+    }
+  } catch (e) {}
+  const ta = document.createElement('textarea');
+  ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); } catch (e) {}
+  document.body.removeChild(ta);
+}
+
+let _toastTimer = null;
+function toast(msg) {
+  let el = document.getElementById('appToast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'appToast';
+    el.className = 'app-toast';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.remove('show'), 1800);
+}
+
+function closeShareSheet() { document.getElementById('shareSheet').classList.add('hidden'); }
 function trunc(ctx, text, maxW) {
   text = String(text || '');
   if (ctx.measureText(text).width <= maxW) return text;
@@ -495,7 +584,7 @@ function renderLibRecent() {
 function renderPopInput() {
   const el = document.getElementById('pop-input');
   if (!el) return;
-  const all = (window.POPULAR_DATA || []).slice(0, 10);
+  const all = (window.POPULAR_DATA || []);
   if (!all.length) {
     if (!renderPopInput._retry) {
       renderPopInput._retry = true;
@@ -504,7 +593,11 @@ function renderPopInput() {
     el.innerHTML = '<div class="lib-empty">暂无热门数据</div>';
     return;
   }
-  el.innerHTML = all.map((d) => {
+  const size = Math.min(10, all.length);
+  const start = (popPage * size) % all.length;
+  const page = [];
+  for (let i = 0; i < size; i++) page.push(all[(start + i) % all.length]);
+  el.innerHTML = page.map((d) => {
     const input = d.__input || (d.mode === 'multi' ? (d.words || []).map((w) => w.word).join(' ') : ((d.primary && d.primary.word) || ''));
     return `<span class="pop-item" data-pop="${esc(input)}">${esc(titleOf(d))}</span>`;
   }).filter(Boolean).join('');
@@ -553,15 +646,14 @@ if (libRefresh) libRefresh.addEventListener('click', () => { popPage++; renderPo
 });
 const libReview = document.getElementById('lib-review');
 if (libReview) libReview.addEventListener('click', showReview);
-const shareDownload = document.getElementById('shareDownload');
-if (shareDownload) shareDownload.addEventListener('click', () => {
-  const img = document.getElementById('shareImg');
-  const url = (img && img.src && img.style.display !== 'none') ? img.src : document.getElementById('shareCanvas').toDataURL('image/png');
-  const a = document.createElement('a');
-  a.href = url; a.download = 'miss-pompei.png'; a.click();
-});
+// 分享浮层：关闭 + 三个分享选项
 const shareClose = document.getElementById('shareClose');
-if (shareClose) shareClose.addEventListener('click', () => document.getElementById('shareMask').classList.add('hidden'));
+if (shareClose) shareClose.addEventListener('click', closeShareSheet);
+const shareMaskBg = document.getElementById('shareMaskBg');
+if (shareMaskBg) shareMaskBg.addEventListener('click', closeShareSheet);
+document.querySelectorAll('.sp-opt').forEach((el) => {
+  el.addEventListener('click', () => shareVia(el.dataset.share));
+});
 
 // 帮助气泡（右上角 ? 点击，不切换页面）
 const helpBtn = $('#helpBtn');
@@ -580,7 +672,7 @@ document.addEventListener('click', (e) => {
     if (a === 'r-remember') { advanceReview(true); return; }
     if (a === 'r-forget') { advanceReview(false); return; }
     if (a === 'r-back') { libView = 'library'; paintLibrary(); return; }
-    if (a === 'share') { onShareImage(); return; }
+    if (a === 'share') { openShareSheet(); return; }
   }
   const fav = e.target.closest('[data-fav]');
   if (fav) { const r = favCache[+fav.dataset.fav]; if (r) showDetail(r.data); return; }

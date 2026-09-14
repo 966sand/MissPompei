@@ -319,6 +319,10 @@ body {
 
 /* 热门近义词（查近义词页） */
 .popular { margin-top: 22px; }
+.popular-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.popular-head .recent-label { margin-bottom: 0; }
+.pop-refresh { background: #eaf1fd; color: #1E63D0; font-size: 12px; font-weight: 600; padding: 5px 12px; border-radius: 999px; cursor: pointer; }
+.pop-refresh:active { background: #dbe7fb; }
 .popular-list { display: flex; flex-wrap: wrap; }
 .pop-item { background: #fff; border: 1px solid #EDEFF3; border-radius: 10px; padding: 10px 14px; font-size: 13px; color: var(--ink); margin: 0 10px 10px 0; box-shadow: 0 2px 8px rgba(60,130,200,.06); cursor: pointer; }
 .pop-item:active { background: #f3f6fc; }
@@ -349,6 +353,39 @@ body {
 .share-actions .rev-btn.remember { background: linear-gradient(135deg,#2f7bf0,#1E63D0); }
 .share-actions .rev-btn.forget { background: linear-gradient(135deg,#f0884a,#E08A1E); }
 .share-actions .rev-btn:active { opacity: .9; }
+
+/* 分享浮层（与小程序一致：朋友圈 / 微信好友 / 分享链接） */
+.share-sheet { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: flex-end; }
+.share-sheet.hidden { display: none; }
+.share-mask-bg { position: absolute; inset: 0; background: rgba(0,0,0,.45); }
+.share-panel {
+  position: relative; width: 100%; background: #fff;
+  border-radius: 24px 24px 0 0; padding: 18px 20px calc(20px + env(safe-area-inset-bottom));
+  box-sizing: border-box; animation: sheetUp .24s ease;
+}
+@keyframes sheetUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+.sp-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.sp-title { font-size: 16px; font-weight: 700; color: #1f2937; }
+.sp-close { font-size: 18px; color: #9aa7bd; padding: 4px 10px; cursor: pointer; }
+.sp-preview { background: #f5f7fb; border-radius: 14px; padding: 12px; margin-bottom: 16px; display: flex; justify-content: center; }
+.sp-img { width: 150px; border-radius: 10px; }
+.sp-options { display: flex; }
+.sp-opt { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 6px 0; cursor: pointer; }
+.sp-opt:active { opacity: .7; }
+.sp-ico { width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; margin-bottom: 8px; }
+.ico-moments { background: #1FA15A; }
+.ico-friend { background: #1E63D0; }
+.ico-link { background: #E08A1E; }
+.sp-label { font-size: 13px; color: #4a5568; }
+
+/* 轻提示 */
+.app-toast {
+  position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  background: rgba(0,0,0,.8); color: #fff; font-size: 14px; padding: 10px 18px;
+  border-radius: 10px; z-index: 2000; opacity: 0; pointer-events: none;
+  transition: opacity .2s ease; max-width: 80vw; text-align: center;
+}
+.app-toast.show { opacity: 1; }
 
 /* 发音按钮（音标后） */
 .wc-speak {
