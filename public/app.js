@@ -25,8 +25,19 @@ const SPEAKER = '<svg class="sp-ico" viewBox="0 0 24 24" width="15" height="15" 
 // 状态机：两个 tab 各自记住内部子视图，切换 tab 互不丢失状态
 let currentTab = 'query';   // 'query' | 'library'
 let queryView = 'input';    // 'input' | 'loading' | 'result'
-let libView = 'library';    // 'library' | 'detail'
+let libView = 'library';    // 'library' | 'detail' | 'review'
 let popPage = 0;
+
+// 当前结果（用于收藏 / 复习）
+let currentInput = '';
+let currentData = null;
+
+// 收藏 / 复习数据
+const FAV_KEY = 'ms_favorites';
+const REVIEW_DAYS = [1, 2, 4, 7, 15];
+let favCache = [];
+let reviewList = [];
+let reviewIdx = 0;
 
 // 仅重绘「查近义词」tab 内部的子视图（结果页 innerHTML 保留，切换回来仍在）
 function paintQuery() {
@@ -104,6 +115,8 @@ async function run() {
     });
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.error || '请求失败');
+    currentInput = input;
+    currentData = data;
     renderResult(data);
     pushRecent(input, data);
     queryView = 'result';
