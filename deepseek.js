@@ -54,6 +54,7 @@ async function callDeepSeekOnce(userPrompt) {
         messages: [{ role: 'user', content: userPrompt }],
         temperature: 0.3,
         response_format: { type: 'json_object' },
+        thinking: { type: 'disabled' },
         max_tokens: 2000,
       }),
       signal: controller.signal,
