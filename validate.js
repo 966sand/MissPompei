@@ -27,3 +27,25 @@ export function toTokens(input) {
     .split(/\s+/)
     .filter((t) => t.length > 0);
 }
+
+// 口语翻译输入校验：必须是中文，1–50 字
+// 规则：
+//   1. 空输入 → 「请输入要翻译的中文」
+//   2. 超过 50 字 → 「最多支持 50 个字」
+//   3. 一个中文字符都没有（如纯英文） → 「请输入中文，口语翻译只支持中文」
+export function validateColloquialInput(raw) {
+  const s = (raw || '').trim();
+  if (s.length === 0) return { ok: false, msg: '请输入要翻译的中文' };
+
+  const len = [...s].length;
+  if (len > 50) return { ok: false, msg: `最多支持 50 个字，当前 ${len} 个字` };
+
+  const cnCount = (s.match(CN_RE) || []).length;
+  if (cnCount === 0) return { ok: false, msg: '请输入中文，口语翻译只支持中文' };
+
+  // 中日韩混排时，中文必须占主体，避免整段日文/韩文被当成中文送进去
+  const cjk = (s.match(/[\u3040-\u30ff\uac00-\ud7af]/g) || []).length;
+  if (cjk > 0 && cjk >= cnCount) return { ok: false, msg: '请输入中文，口语翻译只支持中文' };
+
+  return { ok: true, normalized: s };
+}

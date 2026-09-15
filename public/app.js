@@ -1,132 +1,171 @@
-// app.js — Miss Pompei 前端交互（查近义词 / 近义词库 / 发音）
+// app.js — 单词助手 前端交互
+// 三个 tab：首页（口语翻译 / 近义词查询）· 阅读 · 收藏
 const $ = (s) => document.querySelector(s);
 const stateInput = $('#state-input');
 const stateLoading = $('#state-loading');
 const stateResult = $('#state-result');
-const stateLibrary = $('#state-library');
-const stateDetail = $('#state-detail');
+const stateReading = $('#state-reading');
+const stateFav = $('#state-fav');
 const stateReview = $('#state-review');
-const q = $('#q');
-const go = $('#go');
-const tip = $('#tip');
+const qEl = $('#q');
+const goBtn = $('#go');
+const tipEl = $('#tip');
+const counterEl = $('#counter');
 const recentList = $('#recent');
+const popEl = $('#popList');
+const readList = $('#readList');
+const favList = $('#favList');
 const backBtn = $('#backBtn');
-const tabQuery = $('#tabQuery');
-const tabLib = $('#tabLib');
-const libRecent = $('#lib-recent');
-const libRefresh = $('#libRefresh');
+const loadingText = $('#loadingText');
+const tabHome = $('#tabHome');
+const tabRead = $('#tabRead');
+const tabFav = $('#tabFav');
+
 const RECENT_KEY = 'ms_recent';
-
-const CN_RE = /[㐀-䶿一-鿿]/g;
-const ACCENTS = ['var(--blue)', 'var(--green)', 'var(--orange)'];
-const SPEAKER = '<svg class="sp-ico" viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z"/></svg>';
-
-// 状态机：两个 tab 各自记住内部子视图，切换 tab 互不丢失状态
-let currentTab = 'query';   // 'query' | 'library'
-let queryView = 'input';    // 'input' | 'loading' | 'result'
-let libView = 'library';    // 'library' | 'detail' | 'review'
-let popPage = 0;
-
-// 当前结果（用于收藏 / 复习）
-let currentInput = '';
-let currentData = null;
-
-// 收藏 / 复习数据
 const FAV_KEY = 'ms_favorites';
 const REVIEW_DAYS = [1, 2, 4, 7, 15];
+const CN_RE = /[\u3400-\u4dbf\u4e00-\u9fff]/;
+const SPEAKER = '<svg class="sp-ico" viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z"/></svg>';
+const ACCENTS = ['var(--blue)', 'var(--green)', 'var(--orange)'];
+
+// ---------- 状态 ----------
+let mode = 'colloquial';      // 'colloquial' | 'synonym'
+let currentTab = 'home';      // 'home' | 'read' | 'fav'
+let queryView = 'input';      // 首页内部子视图：'input' | 'loading' | 'result'
+let favView = 'list';         // 收藏内部子视图：'list' | 'review'
+
+let currentInput = '';
+let currentData = null;
+let currentKind = 'synonym';
+
 let favCache = [];
 let reviewList = [];
 let reviewIdx = 0;
 
-// 仅重绘「查近义词」tab 内部的子视图（结果页 innerHTML 保留，切换回来仍在）
-function paintQuery() {
-  stateLibrary.classList.add('hidden');
-  stateDetail.classList.add('hidden');
-  stateInput.classList.toggle('hidden', queryView !== 'input');
-  stateLoading.classList.toggle('hidden', queryView !== 'loading');
-  stateResult.classList.toggle('hidden', queryView !== 'result');
-  backBtn.classList.toggle('hidden', queryView !== 'result');
-}
+let popPage = 0;
+let readPage = 0;
+let readArticles = [];
+let readLoading = false;
+let readSource = '';
+let expandedRead = new Set();
 
-// 仅重绘「近义词库」tab 内部的子视图
-function paintLibrary() {
-  stateInput.classList.add('hidden');
-  stateLoading.classList.add('hidden');
-  stateResult.classList.add('hidden');
-  stateLibrary.classList.toggle('hidden', libView !== 'library');
-  stateDetail.classList.toggle('hidden', libView !== 'detail');
-  stateReview.classList.toggle('hidden', libView !== 'review');
-  backBtn.classList.toggle('hidden', !(libView === 'detail' || libView === 'review'));
-  if (libView === 'library') renderLibrary();
-}
+const MAXLEN = { colloquial: 50, synonym: 100 };
+const PLACEHOLDER = {
+  colloquial: '输入中文，即刻翻译地道口语',
+  synonym: '输入单词，多个单词用空格隔开',
+};
 
-// 主切换：查近义词 / 近义词库（各自保留上次的子状态）
-function showTab(tab) {
-  currentTab = tab;
-  tabQuery.classList.toggle('active', tab === 'query');
-  tabLib.classList.toggle('active', tab === 'library');
-  if (tab === 'query') paintQuery();
-  else paintLibrary();
-}
-
-// 从库中点开某条，复用结果渲染，显示完整辨析
-function showDetail(data) {
-  libView = 'detail';
-  currentInput = (data && data.primary && data.primary.word) || currentInput;
-  currentData = data;
-  renderResult(data, stateDetail);
-  paintLibrary();
-}
-
-function setTip(msg) {
-  tip.textContent = msg ? '⚠ ' + msg : '';
-  tip.style.display = msg ? 'block' : 'none';
-}
-
-function validate(raw) {
-  const s = (raw || '').trim();
-  if (!s) return '请输入要查询的单词';
-  if ([...s].length > 100) return '暂不支持超过100个字符的长度';
-  const cn = (s.match(CN_RE) || []).length;
-  if (cn >= 1) return '不支持中文输入';
-  return '';
-}
-
+// ---------- 工具 ----------
 function esc(s) {
   return String(s ?? '').replace(/[&<>"]/g, (c) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;',
   }[c]));
 }
 
-// ---------- 查询流程 ----------
-async function run() {
-  const v = validate(q.value);
+function setTip(msg) {
+  tipEl.textContent = msg ? '⚠ ' + msg : '';
+  tipEl.style.display = msg ? 'block' : 'none';
+}
+
+// ---------- 输入校验（与后端 validate.js 同一套规则） ----------
+function validate(raw, m) {
+  const s = (raw || '').trim();
+  if (m === 'colloquial') {
+    if (!s) return '请输入要翻译的中文';
+    const len = [...s].length;
+    if (len > 50) return `最多支持 50 个字，当前 ${len} 个字`;
+    if (!CN_RE.test(s)) return '请输入中文，口语翻译只支持中文';
+    return '';
+  }
+  if (!s) return '请输入要查询的单词';
+  if ([...s].length > 100) return '暂不支持超过100个字符的长度';
+  if (CN_RE.test(s)) return '不支持中文输入';
+  return '';
+}
+
+// ---------- 输入框 ----------
+function updateCounter() {
+  const max = MAXLEN[mode];
+  const len = [...qEl.value.trim()].length;
+  counterEl.textContent = `${len}/${max}`;
+  counterEl.classList.toggle('over', len > max);
+}
+function setMode(next, { keepValue = true } = {}) {
+  mode = next;
+  document.querySelectorAll('.mode-opt').forEach((el) => {
+    el.classList.toggle('active', el.dataset.mode === next);
+  });
+  qEl.setAttribute('maxlength', String(MAXLEN[next]));
+  qEl.setAttribute('placeholder', PLACEHOLDER[next]);
+  if (!keepValue) qEl.value = '';
+  setTip('');
+  updateCounter();
+}
+
+// ---------- 视图切换 ----------
+function paintTab() {
+  tabHome.classList.toggle('active', currentTab === 'home');
+  tabRead.classList.toggle('active', currentTab === 'read');
+  tabFav.classList.toggle('active', currentTab === 'fav');
+
+  stateInput.classList.toggle('hidden', !(currentTab === 'home' && queryView === 'input'));
+  stateLoading.classList.toggle('hidden', !(currentTab === 'home' && queryView === 'loading'));
+  stateResult.classList.toggle('hidden', !(currentTab === 'home' && queryView === 'result'));
+  stateReading.classList.toggle('hidden', currentTab !== 'read');
+  stateFav.classList.toggle('hidden', !(currentTab === 'fav' && favView === 'list'));
+  stateReview.classList.toggle('hidden', !(currentTab === 'fav' && favView === 'review'));
+
+  const showBack = (currentTab === 'home' && queryView === 'result') || (currentTab === 'fav' && favView === 'review');
+  backBtn.classList.toggle('hidden', !showBack);
+}
+
+function showTab(tab) {
+  currentTab = tab;
+  if (tab === 'read' && !readArticles.length && !readLoading) loadReading(0);
+  if (tab === 'fav') renderFavList();
+  paintTab();
+}
+
+// ---------- 查询 ----------
+async function run(forced) {
+  const input = (forced != null ? String(forced) : qEl.value).trim();
+  const v = validate(input, mode);
   if (v) { setTip(v); return; }
   setTip('');
-  const input = q.value.trim();
+  if (forced == null) qEl.value = input;
+
   queryView = 'loading';
-  paintQuery();
+  loadingText.textContent = mode === 'colloquial' ? '翻译中…' : '查询中…';
+  paintTab();
+  screenTop();
+
   try {
     const resp = await fetch('/api/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ input }),
+      body: JSON.stringify({ input, kind: mode }),
     });
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.error || '请求失败');
     currentInput = input;
     currentData = data;
-    renderResult(data);
-    pushRecent(input, data);
+    currentKind = mode;
+    renderResult(data, stateResult);
+    pushRecent(input, mode, data);
     queryView = 'result';
   } catch (e) {
     queryView = 'input';
     setTip(e.message || '服务暂时不可用');
   }
-  paintQuery();
+  paintTab();
 }
 
-// ---------- 渲染：单词卡片（含发音按钮） ----------
+function screenTop() {
+  const sc = document.getElementById('screen');
+  if (sc) sc.scrollTop = 0;
+}
+
+// ══════════ 渲染：近义词（规则与呈现保持不变） ══════════
 function wordCard(w, accent) {
   const ex = (w.examples || []).map((e, i) => `
     <div class="ex">
@@ -138,7 +177,7 @@ function wordCard(w, accent) {
       <div class="wc-head">
         <span class="wc-word">${esc(w.word)}</span>
         <span class="wc-phon">${esc(w.phonetic)}</span>
-        <button class="wc-speak" data-word="${esc(w.word)}" title="英式发音" aria-label="英式发音">${SPEAKER}</button>
+        <button class="wc-speak" data-say="${esc(w.word)}" title="英式发音" aria-label="英式发音">${SPEAKER}</button>
         <span class="wc-pos">${esc(w.pos)}</span>
       </div>
       <div class="wc-cn">${esc(w.cn_meaning)}</div>
@@ -147,12 +186,9 @@ function wordCard(w, accent) {
     </div>`;
 }
 
-// ---------- 渲染：场景1（单词 + 同义词） ----------
 function renderSingle(data, target) {
-  target = target || stateResult;
   const p = data.primary || {};
-  const syn = (data.synonyms || [])
-    .map((w) => wordCard(w, 'var(--green)')).join('');
+  const syn = (data.synonyms || []).map((w) => wordCard(w, 'var(--green)')).join('');
   const a = data.analysis || {};
 
   const qc = (a.quick_compare || []).map((x) => `
@@ -192,11 +228,8 @@ function renderSingle(data, target) {
     </div>`;
 }
 
-// ---------- 渲染：场景2（多词对比） ----------
 function renderMulti(data, target) {
-  target = target || stateResult;
-  const words = (data.words || [])
-    .map((w, i) => wordCard(w, ACCENTS[i % ACCENTS.length])).join('');
+  const words = (data.words || []).map((w, i) => wordCard(w, ACCENTS[i % ACCENTS.length])).join('');
   const a = data.analysis || {};
   const ot = a.overall_table || {};
   const dims = ot.dimensions || [];
@@ -218,7 +251,7 @@ function renderMulti(data, target) {
   const wCount = (data.words || []).length;
   target.innerHTML = `
     <div class="result-scroll">
-      <div class="result-summary"><span class="rs-text">本次一共对比${wCount}个单词</span><span class="rs-btns"><button class="share-img-btn" data-act="share">分享</button></span></div>
+      <div class="result-summary"><span class="rs-text">本次一共对比${wCount}个单词</span><span class="rs-btns">${favBtnHtml()}<button class="share-img-btn" data-act="share">分享</button></span></div>
       ${words}
       <div class="analysis">
         <div class="an-title">整体对比</div>
@@ -230,137 +263,439 @@ function renderMulti(data, target) {
     </div>`;
 }
 
-function renderResult(data, target) {
-  if (data.mode === 'multi') renderMulti(data, target);
-  else renderSingle(data, target);
+// ══════════ 渲染：口语翻译（三部分） ══════════
+function sentRow(en, cn, extraClass = '') {
+  return `
+    <div class="sent ${extraClass}">
+      <div class="sent-body">
+        <div class="sent-en">${esc(en)}</div>
+        ${cn ? `<div class="sent-cn">${esc(cn)}</div>` : ''}
+      </div>
+      <button class="sent-tail" data-say="${esc(en)}" aria-label="朗读">${SPEAKER}</button>
+    </div>`;
 }
 
-// ---------- 收藏 / 复习 ----------
+function renderColloquial(data, target) {
+  const zh = data.zh || currentInput || '';
+  const examples = (data.examples || []).slice(0, 3);
+  const points = (data.key_points || []).slice(0, 5);
+  const scenes = (data.scenes || []).slice(0, 3);
+
+  const exHtml = examples.map((e) => sentRow(e.en, e.cn)).join('');
+
+  const kpHtml = points.map((k) => {
+    const isWord = (k.kind || '').toLowerCase() === 'word';
+    return `
+      <div class="kp">
+        <div class="kp-head">
+          <span class="kp-term">${esc(k.term)}</span>
+          <span class="kp-kind ${isWord ? 'k-word' : ''}">${isWord ? '单词' : '短语'}</span>
+          ${k.phonetic ? `<span class="kp-phon">${esc(k.phonetic)}</span>` : ''}
+          <button class="kp-speak" data-say="${esc(k.term)}" aria-label="朗读">${SPEAKER}</button>
+        </div>
+        ${k.cn ? `<div class="kp-cn">${esc(k.cn)}</div>` : ''}
+        ${k.note ? `<div class="kp-note">${esc(k.note)}</div>` : ''}
+      </div>`;
+  }).join('');
+
+  const sceneHtml = scenes.map((s) => `
+    <div class="scene">
+      <span class="scene-tag">${esc(s.scene)}</span>
+      <div class="sent-en">${esc(s.en)}</div>
+      ${s.cn ? `<div class="sent-cn">${esc(s.cn)}</div>` : ''}
+      <div style="text-align:right">
+        <button class="sent-tail" data-say="${esc(s.en)}" aria-label="朗读">${SPEAKER}</button>
+      </div>
+    </div>`).join('');
+
+  target.innerHTML = `
+    <div class="result-scroll">
+      <div class="result-summary"><span class="rs-text">地道口语翻译</span><span class="rs-btns">${favBtnHtml()}<button class="share-img-btn" data-act="share">分享</button></span></div>
+
+      <div class="col-hero">
+        <div class="col-hero-label">中文 · ${esc(zh)}</div>
+        <div class="col-main">
+          <span class="col-text">${esc(data.translation || '')}</span>
+          <button class="sent-tail" data-say="${esc(data.translation || '')}" aria-label="朗读">${SPEAKER}</button>
+        </div>
+        ${data.literal ? `<div class="col-literal"><b>直译对照：</b>${esc(data.literal)}</div>` : ''}
+      </div>
+
+      <div class="col-sec">
+        <div class="col-sec-title">地道例句</div>
+        <div class="col-sec-sub">点句子右侧喇叭可朗读</div>
+        ${exHtml}
+      </div>
+
+      ${kpHtml ? `
+      <div class="col-sec">
+        <div class="col-sec-title">重点词汇与短语</div>
+        <div class="col-sec-sub">上面例句里最值得记住的用法</div>
+        ${kpHtml}
+      </div>` : ''}
+
+      ${sceneHtml ? `
+      <div class="col-sec">
+        <div class="col-sec-title">还能用在这些场景</div>
+        <div class="col-sec-sub">换个场合怎么说</div>
+        ${sceneHtml}
+      </div>` : ''}
+
+      ${data.tip ? `<div class="col-tip"><b>提醒：</b>${esc(data.tip)}</div>` : ''}
+    </div>`;
+}
+
+function renderResult(data, target) {
+  target = target || stateResult;
+  if (data.mode === 'colloquial') return renderColloquial(data, target);
+  if (data.mode === 'multi') return renderMulti(data, target);
+  return renderSingle(data, target);
+}
+
+// ══════════ 发音（服务端 TTS 代理，失败回退浏览器合成） ══════════
+let _audio = null;
+function clearPlaying() {
+  document.querySelectorAll('.playing').forEach((el) => el.classList.remove('playing'));
+}
+function speakFallback(text) {
+  if (!('speechSynthesis' in window)) return;
+  try {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'en-GB';
+    u.rate = 0.9;
+    const v = (speechSynthesis.getVoices() || []).find((vv) => /en[-_]GB/i.test(vv.lang) || /British|UK/i.test(vv.name));
+    if (v) u.voice = v;
+    speechSynthesis.speak(u);
+  } catch { /* 忽略 */ }
+}
+function speak(text, btn) {
+  const t = String(text || '').trim();
+  if (!t) return;
+  try { if (_audio) { _audio.pause(); _audio = null; } } catch { /* 忽略 */ }
+  clearPlaying();
+  if (btn) btn.classList.add('playing');
+
+  const a = new Audio('/api/tts?text=' + encodeURIComponent(t));
+  _audio = a;
+  const done = () => { if (btn) btn.classList.remove('playing'); };
+  a.addEventListener('ended', done);
+  a.addEventListener('error', () => { done(); speakFallback(t); });
+  const p = a.play();
+  if (p && p.catch) p.catch(() => { done(); speakFallback(t); });
+}
+if ('speechSynthesis' in window) {
+  speechSynthesis.getVoices();
+  speechSynthesis.onvoiceschanged = () => speechSynthesis.getVoices();
+}
+
+// ══════════ 收藏 / 复习 ══════════
 function loadFavs() {
   try { return JSON.parse(localStorage.getItem(FAV_KEY) || '[]'); }
   catch { return []; }
 }
-function saveFavs(arr) {
-  favCache = arr;
-  try { localStorage.setItem(FAV_KEY, JSON.stringify(arr.slice(0, 200))); } catch { /* ignore */ }
-  renderFavSection();
-  updateFavBtn();
+function persistFavs() {
+  try { localStorage.setItem(FAV_KEY, JSON.stringify(favCache.slice(0, 200))); } catch { /* 超限忽略 */ }
 }
-function isFav(input) { return favCache.some((r) => r.input === input); }
+function isFav(input, kind) {
+  return favCache.some((r) => r.input === input && (r.kind || 'synonym') === kind);
+}
 function favBtnHtml() {
-  const on = isFav(currentInput);
+  const on = isFav(currentInput, currentKind);
   return `<button class="fav-btn ${on ? 'on' : ''}" data-act="fav">${on ? '★ 已收藏' : '☆ 收藏'}</button>`;
 }
 function toggleFav() {
-  if (!currentInput) return;
-  if (isFav(currentInput)) removeFav(currentInput);
-  else addFav(currentInput, currentData);
-}
-function addFav(input, data) {
-  const rec = {
-    input, data,
-    level: 0,
-    nextReview: Date.now() + REVIEW_DAYS[0] * 864e5,
-    createdAt: Date.now(), updatedAt: Date.now(),
-  };
-  favCache = favCache.filter((r) => r.input !== input);
-  favCache.unshift(rec);
-  saveFavs(favCache);
-}
-function removeFav(input) {
-  favCache = favCache.filter((r) => r.input !== input);
-  saveFavs(favCache);
+  if (!currentInput || !currentData) return;
+  if (isFav(currentInput, currentKind)) {
+    favCache = favCache.filter((r) => !(r.input === currentInput && (r.kind || 'synonym') === currentKind));
+    toast('已取消收藏');
+  } else {
+    favCache = favCache.filter((r) => !(r.input === currentInput && (r.kind || 'synonym') === currentKind));
+    favCache.unshift({
+      input: currentInput, kind: currentKind, data: currentData,
+      level: 0,
+      nextReview: Date.now() + REVIEW_DAYS[0] * 864e5,
+      createdAt: Date.now(), updatedAt: Date.now(),
+    });
+    toast('已加入收藏');
+  }
+  persistFavs();
+  updateFavBtn();
+  renderFavList();
+  renderFavDot();
 }
 function updateFavBtn() {
   const btn = document.querySelector('#state-result .fav-btn');
   if (!btn) return;
-  const on = isFav(currentInput);
+  const on = isFav(currentInput, currentKind);
   btn.className = 'fav-btn' + (on ? ' on' : '');
   btn.textContent = on ? '★ 已收藏' : '☆ 收藏';
 }
-function renderFavSection() {
+function dueCount() {
   const now = Date.now();
-  const favEl = document.getElementById('lib-fav');
-  if (!favEl) return;
+  return favCache.filter((r) => (r.nextReview || 0) <= now).length;
+}
+function renderFavDot() {
+  const existing = document.querySelector('#tabFav .tab-dot');
+  const n = dueCount();
+  if (existing) existing.remove();
+  if (n > 0) {
+    const d = document.createElement('span');
+    d.className = 'tab-dot';
+    d.textContent = n > 99 ? '99+' : String(n);
+    tabFav.appendChild(d);
+  }
+}
+function renderFavList() {
+  if (!favList) return;
   if (!favCache.length) {
-    favEl.innerHTML = '<div class="lib-empty">收藏后这里会出现生词本，点结果页「☆ 收藏」加入复习计划</div>';
+    favList.innerHTML = '<div class="lib-empty">还没有收藏。查询后点结果页的「☆ 收藏」，就能在这里复习。</div>';
   } else {
-    favEl.innerHTML = favCache.map((r, i) => `
+    favList.innerHTML = favCache.map((r, i) => `
       <div class="lib-item" data-fav="${i}">
-        <div class="lib-title">${esc(titleOf(r.data))}</div>
-        <div class="lib-sub">${esc(subOf(r.data))}</div>
+        <div class="lib-title">${esc(favTitle(r))}</div>
+        <div class="lib-sub">${esc(favSub(r))}</div>
       </div>`).join('');
   }
-  const ready = favCache.filter((r) => (r.nextReview || 0) <= now).length;
   const badge = document.getElementById('reviewBadge');
-  if (badge) badge.textContent = ready > 0 ? '(' + ready + ')' : '';
+  if (badge) badge.textContent = String(dueCount());
+  const rev = document.getElementById('favReview');
+  if (rev) rev.style.display = favCache.length ? 'block' : 'none';
+  renderFavDot();
 }
-function renderScene() {
-  const wrap = document.getElementById('lib-scene');
-  if (!wrap) return;
-  wrap.innerHTML = SCENE.map((s) => {
-    const items = s.words.map((w) => `
-      <div class="lib-item lib-item--word" data-word="${esc(w)}">
-        <div class="lib-title">${esc(w)}</div>
-      </div>`).join('');
-    return `<div class="scene-block"><div class="scene-name">${esc(s.name)}</div><div class="lib-list">${items}</div></div>`;
-  }).join('');
+function favTitle(r) {
+  if ((r.kind || 'synonym') === 'colloquial') return r.input;
+  return titleOf(r.data);
 }
-function openShareSheet() {
-  const d = currentData;
-  if (!d) { alert('请先查询'); return; }
-  const canvas = document.getElementById('shareCanvas');
-  const img = document.getElementById('shareImg');
-  const ctx = canvas.getContext('2d');
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const W = 320, H = 440;
-  canvas.width = W * dpr; canvas.height = H * dpr;
-  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, W, H);
-  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H);
-  // 顶部蓝色块 + logo + 品牌
-  ctx.fillStyle = '#1E63D0'; ctx.fillRect(0, 0, W, 80);
-  drawLogo(ctx, 20, 20, 40);
-  ctx.fillStyle = '#ffffff'; ctx.font = 'bold 19px sans-serif'; ctx.fillText('单词助手', 70, 42);
-  ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.font = '11px sans-serif'; ctx.fillText('英语近义词辨析', 70, 60);
-  // 分享标题
-  const title = shareTitle();
-  ctx.fillStyle = '#1f2937'; ctx.font = 'bold 18px sans-serif'; ctx.fillText(trunc(ctx, title, W - 40), 20, 120);
-  // 主词 / 对比词
-  const isMulti = d.mode === 'multi';
-  const mainWord = isMulti ? (d.words || []).map((w) => w.word).join(' / ') : ((d.primary && d.primary.word) || '');
-  ctx.fillStyle = '#1E63D0'; ctx.font = 'bold 22px sans-serif'; ctx.fillText(trunc(ctx, mainWord, W - 40), 20, 158);
-  const pos = isMulti ? '' : ((d.primary && d.primary.pos) || '');
-  const phon = isMulti ? '' : ((d.primary && d.primary.phonetic) || '');
-  if (pos || phon) { ctx.fillStyle = '#6b7890'; ctx.font = '12px sans-serif'; ctx.fillText((pos + '  ' + phon).trim(), 20, 180); }
-  const cn = isMulti ? '' : ((d.primary && d.primary.cn_meaning) || '');
-  if (cn) { ctx.fillStyle = '#2b3a52'; ctx.font = '13px sans-serif'; ctx.fillText(trunc(ctx, cn, W - 40), 20, 202); }
-  const syns = isMulti ? (d.words || []).map((w) => w.word).join('、') : ((d.synonyms || []).map((w) => w.word).join('、'));
-  if (syns) {
-    ctx.fillStyle = '#1FA15A'; ctx.font = 'bold 13px sans-serif'; ctx.fillText('近义词', 20, 232);
-    ctx.fillStyle = '#1f2937'; ctx.font = '13px sans-serif'; ctx.fillText(trunc(ctx, syns, W - 40), 20, 252);
+function favSub(r) {
+  if ((r.kind || 'synonym') === 'colloquial') {
+    const t = (r.data && r.data.translation) || '';
+    const lv = REVIEW_DAYS[r.level || 0];
+    return `口语 · ${t} · ${lv}天后再复习`;
   }
-  const summary = (d.analysis && d.analysis.summary) || '';
-  if (summary) {
-    ctx.fillStyle = '#2b3a52'; ctx.font = '12px sans-serif';
-    const lines = wrapText(ctx, summary, W - 40);
-    let y = 290;
-    lines.slice(0, 7).forEach((ln) => { ctx.fillText(ln, 20, y); y += 18; });
-  }
-  ctx.fillStyle = '#9aa7bd'; ctx.font = '11px sans-serif';
-  ctx.fillText('微信搜索「单词助手」体验完整辨析', 20, H - 18);
-  try {
-    img.src = canvas.toDataURL('image/png');
-    img.style.display = 'block';
-  } catch (e) {
-    canvas.style.display = 'block';
-    img.style.display = 'none';
-  }
-  document.getElementById('shareSheet').classList.remove('hidden');
+  return subOf(r.data);
+}
+function titleOf(d) {
+  if (!d) return '';
+  if (d.mode === 'multi') return (d.words || []).map((w) => w.word).join(' / ');
+  const p = d.primary || {};
+  const syns = (d.synonyms || []).map((w) => w.word).join(', ');
+  return p.word + (syns ? ' → ' + syns : '');
+}
+function subOf(d) {
+  if (!d) return '';
+  if (d.mode === 'multi') return '对比 ' + (d.words || []).length + ' 个单词';
+  return (d.primary && d.primary.cn_meaning || '') + ' · 有 ' + (d.synonyms || []).length + ' 个近义词';
 }
 
-// 圆角 logo 标志（蓝色方块 + 白色「词」）
+function openFavItem(idx) {
+  const r = favCache[idx];
+  if (!r) return;
+  currentInput = r.input;
+  currentData = r.data;
+  currentKind = r.kind || 'synonym';
+  mode = currentKind;
+  qEl.value = r.input;
+  setMode(currentKind);
+  renderResult(r.data, stateResult);
+  queryView = 'result';
+  showTab('home');
+}
+
+// ---------- 复习 ----------
+function showReview() {
+  const now = Date.now();
+  const due = favCache.filter((r) => (r.nextReview || 0) <= now).slice(0, 30);
+  if (!due.length) { toast('暂无待复习'); return; }
+  reviewList = due;
+  reviewIdx = 0;
+  favView = 'review';
+  renderReviewCard();
+  paintTab();
+  screenTop();
+}
+function renderReviewCard() {
+  const rec = reviewList[reviewIdx];
+  if (!rec) { finishReview(); return; }
+  currentInput = rec.input;
+  currentData = rec.data;
+  currentKind = rec.kind || 'synonym';
+  renderResult(rec.data, stateReview);
+  const bar = `<div class="review-head">
+      <div class="review-progress">复习进度 ${reviewIdx + 1} / ${reviewList.length}</div>
+      <div class="review-word">${esc(rec.input)}</div>
+    </div>
+    <div class="review-actions">
+      <button class="rev-btn forget" data-act="r-forget">忘了 ✗</button>
+      <button class="rev-btn remember" data-act="r-remember">记得 ✓</button>
+    </div>`;
+  stateReview.insertAdjacentHTML('afterbegin', bar);
+  clearPlaying();
+}
+function advanceReview(remembered) {
+  const rec = reviewList[reviewIdx];
+  if (!rec) return;
+  let level = rec.level || 0;
+  level = remembered ? Math.min(level + 1, REVIEW_DAYS.length - 1) : 0;
+  rec.level = level;
+  rec.nextReview = Date.now() + REVIEW_DAYS[level] * 864e5;
+  rec.updatedAt = Date.now();
+  const idx = favCache.findIndex((r) => r.input === rec.input && (r.kind || 'synonym') === (rec.kind || 'synonym'));
+  if (idx >= 0) favCache[idx] = rec;
+  persistFavs();
+  reviewIdx += 1;
+  if (reviewIdx >= reviewList.length) finishReview();
+  else { renderReviewCard(); screenTop(); }
+}
+function finishReview() {
+  const total = reviewList.length;
+  stateReview.innerHTML = `<div class="review-done">
+      <div class="rd-emoji">🎉</div>
+      <div class="rd-title">本轮复习完成</div>
+      <div class="rd-sub">共复习 ${total} 项</div>
+      <button class="rev-btn remember wide" data-act="r-back">返回收藏</button>
+    </div>`;
+  reviewList = [];
+  reviewIdx = 0;
+  renderFavList();
+}
+
+// ══════════ 最近查询 ══════════
+// 展示规则：总数最多 5 条，其中「口语翻译」最多占 2 条
+function getRecent() {
+  try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); }
+  catch { return []; }
+}
+function pushRecent(input, kind, data) {
+  const arr = getRecent().filter((x) => !(x.input === input && (x.kind || 'synonym') === kind));
+  arr.unshift({ input, kind, data, at: Date.now() });
+  try { localStorage.setItem(RECENT_KEY, JSON.stringify(arr.slice(0, 12))); } catch { /* 超限忽略 */ }
+  renderRecent();
+}
+function visibleRecent() {
+  const out = [];
+  let colCount = 0;
+  for (const r of getRecent()) {
+    if (out.length >= 5) break;
+    if ((r.kind || 'synonym') === 'colloquial') {
+      if (colCount >= 2) continue;
+      colCount += 1;
+    }
+    out.push(r);
+  }
+  return out;
+}
+function renderRecent() {
+  const arr = visibleRecent();
+  if (!arr.length) {
+    recentList.innerHTML = '<div class="recent-empty">还没有查询记录，试试上面的热门短语</div>';
+    return;
+  }
+  recentList.innerHTML = arr.map((r, i) => {
+    const isCol = (r.kind || 'synonym') === 'colloquial';
+    const main = isCol ? r.input : titleOf(r.data);
+    const sub = isCol ? ((r.data && r.data.translation) || '') : subOf(r.data);
+    return `<div class="recent-item" data-recent="${i}">
+      <div class="ri-main"><span class="ri-tag ${isCol ? 't-col' : 't-syn'}">${isCol ? '口语' : '近义词'}</span>${esc(main)}</div>
+      ${sub ? `<div class="ri-sub">${esc(sub)}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+// ══════════ 热门短语 ══════════
+function renderPhrases() {
+  const all = window.PHRASE_DATA || [];
+  if (!all.length) { popEl.innerHTML = '<div class="recent-empty">暂无数据</div>'; return; }
+  const size = Math.min(5, all.length);
+  const start = (popPage * size) % all.length;
+  const page = [];
+  for (let i = 0; i < size; i++) page.push(all[(start + i) % all.length]);
+  popEl.innerHTML = page.map((p) => `
+    <div class="pop-item" data-phrase="${esc(p.cn)}">
+      <div class="pi-en">${esc(p.en)}</div>
+      <div class="pi-cn">${esc(p.cn)}</div>
+    </div>`).join('');
+}
+
+// ══════════ 阅读 ══════════
+async function loadReading(page) {
+  readLoading = true;
+  readSource = '';
+  if (!readArticles.length) readList.innerHTML = '<div class="sk-card"></div><div class="sk-card"></div><div class="sk-card"></div>';
+  try {
+    const resp = await fetch('/api/reading?page=' + page);
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || '加载失败');
+    readArticles = data.articles || [];
+    readPage = data.page != null ? data.page : page;
+    readSource = data.source || '';
+  } catch (e) {
+    readArticles = [];
+    readList.innerHTML = `<div class="lib-empty">文章加载失败：${esc(e.message || '请稍后再试')}</div>`;
+    readLoading = false;
+    return;
+  }
+  readLoading = false;
+  expandedRead = new Set();
+  renderReading();
+}
+function renderReading() {
+  if (readLoading) return;
+  if (!readArticles.length) {
+    readList.innerHTML = '<div class="lib-empty">暂时没有文章，点「换一批」重试</div>';
+    return;
+  }
+  readList.innerHTML = readArticles.map((a, i) => {
+    const open = expandedRead.has(i);
+    const paras = String(a.body || '').split('\n\n').map((p) => `<p>${esc(p)}</p>`).join('');
+    const words = (a.words || []).map((w) => `<span class="rc-word" data-word="${esc(w)}">${esc(w)}</span>`).join('');
+    return `
+      <div class="read-card">
+        <div class="rc-top">
+          <span class="rc-topic">${esc(a.topic || '阅读')}</span>
+          <span class="rc-len">${(a.body || '').length} 字符</span>
+        </div>
+        <div class="rc-title">${esc(a.title)}</div>
+        ${a.background ? `<div class="rc-sub"><span class="rc-sub-label">背景 · </span>${esc(a.background)}</div>` : ''}
+        ${a.reason ? `<div class="rc-reason">推荐 · ${esc(a.reason)}</div>` : ''}
+        ${words ? `<div class="rc-words">${words}</div>` : ''}
+        <div class="rc-toggle" data-read="${i}">${open ? '收起 ▲' : '点击展开阅读 ▼'}</div>
+        ${open ? `<div class="rc-body">${paras}</div>` : ''}
+      </div>`;
+  }).join('');
+}
+
+// ══════════ 分享 ══════════
+function shareTitle() {
+  if (currentKind === 'colloquial') {
+    const zh = (currentData && currentData.zh) || currentInput || '';
+    return zh ? `单词助手：${zh}的地道口语` : '单词助手：地道口语翻译';
+  }
+  const d = currentData;
+  if (!d) return '单词助手：近义词辨析';
+  let words = [];
+  if (d.mode === 'multi') words = (d.words || []).map((w) => w.word);
+  else {
+    const p = (d.primary && d.primary.word) || '';
+    const syns = (d.synonyms || []).map((w) => w.word);
+    words = [p].concat(syns).filter(Boolean);
+  }
+  words = words.filter(Boolean);
+  if (!words.length) words = [(currentInput || '').trim()].filter(Boolean);
+  if (!words.length) return '单词助手：近义词辨析';
+  const core = words.length <= 2 ? words.join('、') : (words.slice(0, 2).join('、') + '等');
+  return '单词助手：' + core + '的差异';
+}
+
+function buildShareUrl() {
+  const s = (currentInput || '').trim();
+  if (!s) return 'https://misspompei.onrender.com/';
+  const p = new URLSearchParams({ q: s });
+  if (currentKind === 'colloquial') p.set('k', 'c');
+  return 'https://misspompei.onrender.com/?' + p.toString();
+}
+
+// 圆角 logo（蓝色方块 + 白色「词」）
 function drawLogo(ctx, x, y, size) {
   const r = size * 0.25;
   ctx.beginPath();
@@ -379,26 +714,121 @@ function drawLogo(ctx, x, y, size) {
   ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
 }
 
-// 分享标题：≤2 个词「单词助手：xx、xx的差异」；>2 个词「单词助手：xx、xx等的差异」
-function shareTitle() {
-  const d = currentData;
-  if (!d) return '单词助手：近义词辨析';
-  let words = [];
-  if (d.mode === 'multi') words = (d.words || []).map((w) => w.word);
-  else { const p = (d.primary && d.primary.word) || ''; const syns = (d.synonyms || []).map((w) => w.word); words = [p].concat(syns).filter(Boolean); }
-  words = words.filter(Boolean);
-  if (!words.length) words = [(currentInput || '').trim()].filter(Boolean);
-  if (!words.length) return '单词助手：近义词辨析';
-  const core = words.length <= 2 ? words.join('、') : (words.slice(0, 2).join('、') + '等');
-  return '单词助手：' + core + '的差异';
+function trunc(ctx, text, maxW) {
+  text = String(text || '');
+  if (ctx.measureText(text).width <= maxW) return text;
+  let t = text;
+  while (t.length > 1 && ctx.measureText(t + '…').width > maxW) t = t.slice(0, -1);
+  return t + '…';
+}
+function wrapText(ctx, text, maxW) {
+  const chars = String(text || '').split('');
+  const lines = []; let line = '';
+  for (const c of chars) {
+    if (ctx.measureText(line + c).width > maxW && line) { lines.push(line); line = c; }
+    else line += c;
+  }
+  if (line) lines.push(line);
+  return lines;
 }
 
-function buildShareUrl() {
-  const q = (currentInput || '').trim();
-  return 'https://misspompei.onrender.com/' + (q ? ('?q=' + encodeURIComponent(q)) : '');
+function drawShareCard(ctx, W, H) {
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#1E63D0'; ctx.fillRect(0, 0, W, 80);
+  drawLogo(ctx, 20, 20, 40);
+  ctx.fillStyle = '#ffffff'; ctx.font = 'bold 19px sans-serif'; ctx.fillText('单词助手', 70, 42);
+  ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.font = '11px sans-serif';
+  ctx.fillText(currentKind === 'colloquial' ? '地道口语翻译' : '英语近义词辨析', 70, 60);
+
+  if (currentKind === 'colloquial') {
+    const d = currentData || {};
+    ctx.fillStyle = '#6b7890'; ctx.font = '12px sans-serif';
+    ctx.fillText('中文：' + trunc(ctx, d.zh || currentInput, W - 90), 20, 112);
+    ctx.fillStyle = '#1f2937'; ctx.font = 'bold 17px sans-serif';
+    let lines = wrapText(ctx, d.translation || '', W - 40);
+    let y = 146;
+    lines.slice(0, 4).forEach((ln) => { ctx.fillText(ln, 20, y); y += 24; });
+    if (d.literal) {
+      ctx.fillStyle = '#9aa7bd'; ctx.font = '11.5px sans-serif';
+      y += 6;
+      wrapText(ctx, '直译：' + d.literal, W - 40).slice(0, 3).forEach((ln) => { ctx.fillText(ln, 20, y); y += 17; });
+    }
+    const ex = (d.examples || []).slice(0, 2);
+    if (ex.length) {
+      y += 10;
+      ctx.fillStyle = '#1E63D0'; ctx.font = 'bold 12.5px sans-serif'; ctx.fillText('地道例句', 20, y); y += 20;
+      ctx.fillStyle = '#2b3a52'; ctx.font = '12px sans-serif';
+      ex.forEach((e) => {
+        wrapText(ctx, '· ' + e.en, W - 40).slice(0, 2).forEach((ln) => { ctx.fillText(ln, 20, y); y += 17; });
+        y += 4;
+      });
+    }
+    if (d.tip) {
+      y += 4;
+      ctx.fillStyle = '#B26A00'; ctx.font = 'bold 11.5px sans-serif'; ctx.fillText('提醒', 20, y); y += 16;
+      ctx.fillStyle = '#7a5a10'; ctx.font = '11.5px sans-serif';
+      wrapText(ctx, d.tip, W - 40).slice(0, 3).forEach((ln) => { ctx.fillText(ln, 20, y); y += 16; });
+    }
+  } else {
+    const d = currentData || {};
+    ctx.fillStyle = '#1f2937'; ctx.font = 'bold 18px sans-serif';
+    ctx.fillText(trunc(ctx, shareTitle(), W - 40), 20, 120);
+    const isMulti = d.mode === 'multi';
+    const mainWord = isMulti ? (d.words || []).map((w) => w.word).join(' / ') : ((d.primary && d.primary.word) || '');
+    ctx.fillStyle = '#1E63D0'; ctx.font = 'bold 22px sans-serif';
+    ctx.fillText(trunc(ctx, mainWord, W - 40), 20, 158);
+    const pos = isMulti ? '' : ((d.primary && d.primary.pos) || '');
+    const phon = isMulti ? '' : ((d.primary && d.primary.phonetic) || '');
+    if (pos || phon) {
+      ctx.fillStyle = '#6b7890'; ctx.font = '12px sans-serif';
+      ctx.fillText((pos + '  ' + phon).trim(), 20, 180);
+    }
+    const cn = isMulti ? '' : ((d.primary && d.primary.cn_meaning) || '');
+    if (cn) {
+      ctx.fillStyle = '#2b3a52'; ctx.font = '13px sans-serif';
+      ctx.fillText(trunc(ctx, cn, W - 40), 20, 202);
+    }
+    const syns = isMulti ? (d.words || []).map((w) => w.word).join('、') : ((d.synonyms || []).map((w) => w.word).join('、'));
+    if (syns) {
+      ctx.fillStyle = '#1FA15A'; ctx.font = 'bold 13px sans-serif'; ctx.fillText('近义词', 20, 232);
+      ctx.fillStyle = '#1f2937'; ctx.font = '13px sans-serif'; ctx.fillText(trunc(ctx, syns, W - 40), 20, 252);
+    }
+    const summary = (d.analysis && d.analysis.summary) || '';
+    if (summary) {
+      ctx.fillStyle = '#2b3a52'; ctx.font = '12px sans-serif';
+      const lines = wrapText(ctx, summary, W - 40);
+      let y = 290;
+      lines.slice(0, 7).forEach((ln) => { ctx.fillText(ln, 20, y); y += 18; });
+    }
+  }
+  ctx.fillStyle = '#9aa7bd'; ctx.font = '11px sans-serif';
+  ctx.fillText('微信搜索「单词助手」体验完整辨析', 20, H - 18);
 }
 
-// 分享动作：朋友圈 / 微信好友 优先调系统分享面板（移动端可直达微信），否则复制链接 + 提示
+function openShareSheet() {
+  if (!currentData) { toast('请先查询'); return; }
+  const canvas = document.getElementById('shareCanvas');
+  const img = document.getElementById('shareImg');
+  const ctx = canvas.getContext('2d');
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const W = 320, H = 440;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  drawShareCard(ctx, W, H);
+  try {
+    img.src = canvas.toDataURL('image/png');
+    img.style.display = 'block';
+  } catch (e) {
+    canvas.style.display = 'block';
+    img.style.display = 'none';
+  }
+  document.getElementById('shareSheet').classList.remove('hidden');
+}
+
+function closeShareSheet() { document.getElementById('shareSheet').classList.add('hidden'); }
+
 async function shareVia(role) {
   const url = buildShareUrl();
   const title = shareTitle();
@@ -407,11 +837,12 @@ async function shareVia(role) {
       await navigator.share({ title, text: title, url });
       closeShareSheet();
       return;
-    } catch (e) { /* 用户取消或不可用，降级复制链接 */ }
+    } catch { /* 取消或不可用 → 降级复制 */ }
   }
   copyText(url);
-  const tip = role === 'timeline' ? '链接已复制，请粘贴到朋友圈' : role === 'session' ? '链接已复制，请发送给微信好友' : '链接已复制';
-  toast(tip);
+  const msg = role === 'timeline' ? '链接已复制，请粘贴到朋友圈'
+    : role === 'session' ? '链接已复制，请发送给微信好友' : '链接已复制';
+  toast(msg);
   closeShareSheet();
 }
 
@@ -421,11 +852,11 @@ function copyText(text) {
       navigator.clipboard.writeText(text);
       return;
     }
-  } catch (e) {}
+  } catch { /* 降级 */ }
   const ta = document.createElement('textarea');
   ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
   document.body.appendChild(ta); ta.select();
-  try { document.execCommand('copy'); } catch (e) {}
+  try { document.execCommand('copy'); } catch { /* 忽略 */ }
   document.body.removeChild(ta);
 }
 
@@ -444,258 +875,120 @@ function toast(msg) {
   _toastTimer = setTimeout(() => el.classList.remove('show'), 1800);
 }
 
-function closeShareSheet() { document.getElementById('shareSheet').classList.add('hidden'); }
-function trunc(ctx, text, maxW) {
-  text = String(text || '');
-  if (ctx.measureText(text).width <= maxW) return text;
-  let t = text;
-  while (t.length > 1 && ctx.measureText(t + '…').width > maxW) t = t.slice(0, -1);
-  return t + '…';
-}
-function wrapText(ctx, text, maxW) {
-  text = String(text || '');
-  const chars = text.split('');
-  const lines = []; let line = '';
-  for (const c of chars) {
-    if (ctx.measureText(line + c).width > maxW && line) { lines.push(line); line = c; }
-    else line += c;
-  }
-  if (line) lines.push(line);
-  return lines;
-}
+// ══════════ 事件绑定 ══════════
+goBtn.addEventListener('click', () => run());
+qEl.addEventListener('input', updateCounter);
+qEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); run(); }
+});
+document.querySelectorAll('.mode-opt').forEach((el) => {
+  el.addEventListener('click', () => setMode(el.dataset.mode));
+});
 
-function showReview() {
-  const now = Date.now();
-  const due = favCache.filter((r) => (r.nextReview || 0) <= now).slice(0, 30);
-  if (!due.length) { alert('暂无待复习'); return; }
-  reviewList = due; reviewIdx = 0;
-  libView = 'review';
-  renderReviewCard();
-  paintLibrary();
-}
-function renderReviewCard() {
-  const rec = reviewList[reviewIdx];
-  if (!rec) { finishReview(); return; }
-  currentInput = rec.input;
-  currentData = rec.data;
-  renderResult(rec.data, stateReview);
-  const bar = `<div class="review-head">
-      <div class="review-progress">复习进度 ${reviewIdx + 1} / ${reviewList.length}</div>
-      <div class="review-word">${esc(rec.input)}</div>
-    </div>
-    <div class="review-actions">
-      <button class="rev-btn forget" data-act="r-forget">忘了 ✗</button>
-      <button class="rev-btn remember" data-act="r-remember">记得 ✓</button>
-    </div>`;
-  stateReview.insertAdjacentHTML('afterbegin', bar);
-}
-function advanceReview(remembered) {
-  const rec = reviewList[reviewIdx];
-  if (!rec) return;
-  let level = rec.level || 0;
-  if (remembered) level = Math.min(level + 1, REVIEW_DAYS.length - 1);
-  else level = 0;
-  rec.level = level;
-  rec.nextReview = Date.now() + REVIEW_DAYS[level] * 864e5;
-  rec.updatedAt = Date.now();
-  const idx = favCache.findIndex((r) => r.input === rec.input);
-  if (idx >= 0) favCache[idx] = rec;
-  try { localStorage.setItem(FAV_KEY, JSON.stringify(favCache.slice(0, 200))); } catch { /* ignore */ }
-  reviewIdx += 1;
-  if (reviewIdx >= reviewList.length) finishReview();
-  else renderReviewCard();
-}
-function finishReview() {
-  const total = reviewList.length;
-  stateReview.innerHTML = `<div class="review-done">
-      <div class="rd-emoji">🎉</div>
-      <div class="rd-title">本轮复习完成</div>
-      <div class="rd-sub">共复习 ${total} 个单词</div>
-      <button class="rev-btn remember wide" data-act="r-back">返回生词本</button>
-    </div>`;
-  reviewList = []; reviewIdx = 0;
-  renderFavSection();
-}
+tabHome.addEventListener('click', () => showTab('home'));
+tabRead.addEventListener('click', () => showTab('read'));
+tabFav.addEventListener('click', () => showTab('fav'));
 
-// ---------- 最近查询（待输入页） ----------
-function getRecent() {
-  try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); }
-  catch { return []; }
-}
-function pushRecent(input, data) {
-  const arr = getRecent().filter((x) => x.input !== input);
-  arr.unshift({ input, data });
-  localStorage.setItem(RECENT_KEY, JSON.stringify(arr.slice(0, 10)));
-  renderRecent();
-}
-function renderRecent() {
-  const arr = getRecent();
-  recentList.innerHTML = arr.length
-    ? arr.map((x) => `<li class="recent-item">${esc(x.input)}</li>`).join('')
-    : '<li class="recent-empty">暂无记录</li>';
-  recentList.querySelectorAll('.recent-item').forEach((li, i) => {
-    li.addEventListener('click', () => { q.value = arr[i].input; setTip(''); run(); });
-  });
-}
-
-// ---------- 近义词库 ----------
-function titleOf(d) {
-  if (d.mode === 'multi') {
-    return (d.words || []).map((w) => w.word).join(' / ');
-  }
-  const p = d.primary || {};
-  const syns = (d.synonyms || []).map((w) => w.word).join(', ');
-  return p.word + (syns ? ' → ' + syns : '');
-}
-function subOf(d) {
-  if (d.mode === 'multi') {
-    return '对比 ' + (d.words || []).length + ' 个单词';
-  }
-  return (d.primary?.cn_meaning || '') + ' · 有 ' + (d.synonyms || []).length + ' 个近义词';
-}
-function renderLibrary() {
-  if (libTab === 'scene') renderScene();
-  else if (libTab === 'fav') renderFavSection();
-  else renderLibRecent();
-  showLibPanel();
-}
-function showLibPanel() {
-  const map = { recent: 'panel-recent', fav: 'panel-fav', scene: 'panel-scene' };
-  ['recent', 'fav', 'scene'].forEach((t) => {
-    const p = document.getElementById(map[t]);
-    if (p) p.classList.toggle('hidden', t !== libTab);
-    const tb = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
-    if (tb) tb.classList.toggle('active', t === libTab);
-  });
-}
-function renderLibRecent() {
-  const arr = getRecent();
-  if (!arr.length) {
-    libRecent.innerHTML = '<div class="lib-empty">还没有查询记录，去「查近义词」试试吧</div>';
-    return;
-  }
-  libRecent.innerHTML = arr.map((r, i) => `
-    <div class="lib-item" data-i="${i}">
-      <div class="lib-title">${esc(titleOf(r.data))}</div>
-      <div class="lib-sub">${esc(subOf(r.data))}</div>
-    </div>`).join('');
-  libRecent.querySelectorAll('.lib-item').forEach((el) => {
-    el.addEventListener('click', () => showDetail(arr[+el.dataset.i].data));
-  });
-}
-function renderPopInput() {
-  const el = document.getElementById('pop-input');
-  if (!el) return;
-  const all = (window.POPULAR_DATA || []);
-  if (!all.length) {
-    if (!renderPopInput._retry) {
-      renderPopInput._retry = true;
-      setTimeout(() => { renderPopInput._retry = false; renderPopInput(); }, 400);
-    }
-    el.innerHTML = '<div class="lib-empty">暂无热门数据</div>';
-    return;
-  }
-  const size = Math.min(10, all.length);
-  const start = (popPage * size) % all.length;
-  const page = [];
-  for (let i = 0; i < size; i++) page.push(all[(start + i) % all.length]);
-  el.innerHTML = page.map((d) => {
-    const input = d.__input || (d.mode === 'multi' ? (d.words || []).map((w) => w.word).join(' ') : ((d.primary && d.primary.word) || ''));
-    return `<span class="pop-item" data-pop="${esc(input)}">${esc(titleOf(d))}</span>`;
-  }).filter(Boolean).join('');
-  el.querySelectorAll('.pop-item').forEach((sp) => {
-    sp.addEventListener('click', () => { q.value = sp.dataset.pop; setTip(''); run(); });
-  });
-}
-
-// ---------- 发音（英式 en-GB） ----------
-function speak(word) {
-  if (!('speechSynthesis' in window)) {
-    alert('当前浏览器不支持语音发音');
-    return;
-  }
-  try {
-    speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(word);
-    u.lang = 'en-GB';
-    u.rate = 0.9;
-    const v = (speechSynthesis.getVoices() || [])
-      .find((vv) => /en[-_]GB/i.test(vv.lang) || /British|UK/i.test(vv.name));
-    if (v) u.voice = v;
-    speechSynthesis.speak(u);
-  } catch (e) { /* 忽略 */ }
-}
-if ('speechSynthesis' in window) {
-  speechSynthesis.getVoices();
-  speechSynthesis.onvoiceschanged = () => speechSynthesis.getVoices();
-}
-
-// ---------- 事件绑定 ----------
-go.addEventListener('click', run);
-q.addEventListener('keydown', (e) => { if (e.key === 'Enter') run(); });
-$('#appname').addEventListener('click', () => { setTip(''); queryView = 'input'; showTab('query'); });
+$('#appname').addEventListener('click', () => { setTip(''); queryView = 'input'; favView = 'list'; showTab('home'); });
 backBtn.addEventListener('click', () => {
   setTip('');
-  if (libView === 'review' || libView === 'detail') { libView = 'library'; paintLibrary(); }
-  else { queryView = 'input'; paintQuery(); }
+  clearPlaying();
+  if (currentTab === 'fav' && favView === 'review') { favView = 'list'; renderFavList(); paintTab(); }
+  else { queryView = 'input'; paintTab(); }
 });
-tabQuery.addEventListener('click', () => showTab('query'));
-tabLib.addEventListener('click', () => showTab('library'));
-if (libRefresh) libRefresh.addEventListener('click', () => { popPage++; renderPopInput(); });
-['recent', 'fav', 'scene'].forEach((t) => {
-  const el = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
-  if (el) el.addEventListener('click', () => { libTab = t; renderLibrary(); });
-});
-const libReview = document.getElementById('lib-review');
-if (libReview) libReview.addEventListener('click', showReview);
-// 分享浮层：关闭 + 三个分享选项
-const shareClose = document.getElementById('shareClose');
-if (shareClose) shareClose.addEventListener('click', closeShareSheet);
-const shareMaskBg = document.getElementById('shareMaskBg');
-if (shareMaskBg) shareMaskBg.addEventListener('click', closeShareSheet);
+
+$('#popRefresh').addEventListener('click', () => { popPage += 1; renderPhrases(); });
+$('#readRefresh').addEventListener('click', () => { loadReading(readPage + 1); screenTop(); });
+$('#favReview').addEventListener('click', showReview);
+
+// 分享浮层
+$('#shareClose').addEventListener('click', closeShareSheet);
+$('#shareMaskBg').addEventListener('click', closeShareSheet);
 document.querySelectorAll('.sp-opt').forEach((el) => {
   el.addEventListener('click', () => shareVia(el.dataset.share));
 });
 
-// 帮助气泡（右上角 ? 点击，不切换页面）
+// 帮助气泡
 const helpBtn = $('#helpBtn');
 const helpBubble = $('#helpBubble');
 helpBtn.addEventListener('click', (e) => {
   e.stopPropagation();
   helpBubble.classList.toggle('hidden');
 });
-// 文档点击：发音按钮 + 关闭帮助气泡
+
+// 全局委托
 document.addEventListener('click', (e) => {
   const act = e.target.closest('[data-act]');
   if (act) {
     const a = act.dataset.act;
     if (a === 'fav') { toggleFav(); return; }
-    if (a === 'review') { showReview(); return; }
+    if (a === 'share') { openShareSheet(); return; }
     if (a === 'r-remember') { advanceReview(true); return; }
     if (a === 'r-forget') { advanceReview(false); return; }
-    if (a === 'r-back') { libView = 'library'; paintLibrary(); return; }
-    if (a === 'share') { openShareSheet(); return; }
+    if (a === 'r-back') { favView = 'list'; renderFavList(); paintTab(); return; }
   }
+
+  const say = e.target.closest('[data-say]');
+  if (say) { e.stopPropagation(); speak(say.dataset.say, say); return; }
+
+  const read = e.target.closest('[data-read]');
+  if (read) {
+    const i = +read.dataset.read;
+    if (expandedRead.has(i)) expandedRead.delete(i); else expandedRead.add(i);
+    renderReading();
+    return;
+  }
+
+  const word = e.target.closest('[data-word]');
+  if (word) {
+    setMode('synonym', { keepValue: false });
+    qEl.value = word.dataset.word;
+    updateCounter();
+    showTab('home');
+    run();
+    return;
+  }
+
+  const phrase = e.target.closest('[data-phrase]');
+  if (phrase) {
+    setMode('colloquial', { keepValue: false });
+    qEl.value = phrase.dataset.phrase;
+    updateCounter();
+    showTab('home');
+    run();
+    return;
+  }
+
+  const rec = e.target.closest('[data-recent]');
+  if (rec) {
+    const arr = visibleRecent();
+    const r = arr[+rec.dataset.recent];
+    if (!r) return;
+    currentInput = r.input;
+    currentData = r.data;
+    currentKind = r.kind || 'synonym';
+    mode = currentKind;
+    setMode(currentKind, { keepValue: false });
+    qEl.value = r.input;
+    updateCounter();
+    renderResult(r.data, stateResult);
+    queryView = 'result';
+    showTab('home');
+    return;
+  }
+
   const fav = e.target.closest('[data-fav]');
-  if (fav) { const r = favCache[+fav.dataset.fav]; if (r) showDetail(r.data); return; }
-  const sp = e.target.closest('.wc-speak');
-  if (sp) { e.stopPropagation(); speak(sp.dataset.word); return; }
-  const scene = e.target.closest('[data-word]');
-  if (scene) { q.value = scene.dataset.word; setTip(''); run(); return; }
-  const pop = e.target.closest('[data-pop]');
-  if (pop) { q.value = pop.dataset.pop; setTip(''); run(); return; }
+  if (fav) { openFavItem(+fav.dataset.fav); return; }
+
   if (helpBubble.classList.contains('hidden')) return;
   if (e.target === helpBtn || helpBubble.contains(e.target)) return;
   helpBubble.classList.add('hidden');
 });
-document.querySelectorAll('.tag').forEach((t) => {
-  t.addEventListener('click', () => { q.value = t.textContent.trim(); setTip(''); run(); });
-});
 
-// ---------- 初始化 ----------
-renderRecent();
+// ══════════ 初始化 ══════════
 favCache = loadFavs();
-renderPopInput();
-renderLibrary();          // 预渲染库：确保打开即有默认内容
-window.addEventListener('load', renderLibrary);  // 脚本全部就绪后再补一次，避免加载时序导致空白
-showTab('query');
+setMode('colloquial');
+renderRecent();
+renderPhrases();
+renderFavList();
+paintTab();

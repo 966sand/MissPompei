@@ -3,87 +3,79 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Miss Pompei · 英语近义词辨析助手</title>
+  <title>单词助手 · 地道口语翻译 &amp; 近义词辨析</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <div class="phone">
     <header class="topbar">
       <div class="back-btn hidden" id="backBtn">&#8592;</div>
-      <div class="appname" id="appname">Miss Pompei</div>
-      <div class="subtitle">英语近义词辨析助手</div>
+      <div class="appname" id="appname">单词助手</div>
+      <div class="subtitle">地道口语翻译 · 近义词辨析</div>
       <div class="help-btn" id="helpBtn">?</div>
     </header>
-    <div class="help-bubble hidden" id="helpBubble">Shakespeare said：Token is so expensive ！</div>
+    <div class="help-bubble hidden" id="helpBubble">生活和工作里的话，怎么写才像母语者说的。</div>
 
     <main class="screen" id="screen">
-      <!-- 待输入状态 -->
+      <!-- 首页 -->
       <section class="state" id="state-input">
         <div class="search-card">
-          <div class="input-row">
-            <input id="q" class="q-input" type="text" placeholder="输入单词，多个单词用空格隔开" autocomplete="off" maxlength="200" />
+          <div class="mode-switch" id="modeSwitch">
+            <span class="mode-opt active" data-mode="colloquial">口语翻译</span>
+            <span class="mode-opt" data-mode="synonym">近义词查询</span>
+          </div>
+          <textarea id="q" class="q-input" rows="3" maxlength="50"
+            placeholder="输入中文，即刻翻译地道口语"
+            autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
+          <div class="input-foot">
+            <span class="counter" id="counter">0/50</span>
             <button id="go" class="go-btn">go</button>
           </div>
           <div class="tip" id="tip"></div>
         </div>
 
-        <div class="quick">
-          <div class="quick-label">试试了解这些词的用法差异：</div>
-          <div class="tags" id="tags">
-            <span class="tag">begin start</span>
-            <span class="tag">period stage phase</span>
-            <span class="tag">big large</span>
-          </div>
-        </div>
-
         <div class="recent">
           <div class="recent-label">最近查询</div>
-          <ul class="recent-list" id="recent"></ul>
+          <div class="recent-list" id="recent"></div>
         </div>
 
         <div class="popular">
           <div class="popular-head">
-            <div class="recent-label">热门近义词</div>
-            <div class="pop-refresh" id="libRefresh">↻ 换一批</div>
+            <div class="recent-label">热门短语</div>
+            <div class="pop-refresh" id="popRefresh">↻ 换一批</div>
           </div>
-          <div class="popular-list" id="pop-input"></div>
+          <div class="popular-list" id="popList"></div>
         </div>
       </section>
 
-      <!-- 加载中状态 -->
+      <!-- 加载中 -->
       <section class="state hidden" id="state-loading">
         <div class="loading-wrap">
           <div class="spinner"></div>
-          <div class="loading-text">查询中…</div>
+          <div class="loading-text" id="loadingText">翻译中…</div>
         </div>
       </section>
 
-      <!-- 结果状态 -->
+      <!-- 结果 -->
       <section class="state hidden" id="state-result"></section>
 
-      <!-- 近义词库 -->
-      <section class="state hidden" id="state-library">
-        <div class="lib-tabs">
-          <div class="lib-tab active" data-tab="recent" id="tabRecent">查询过的</div>
-          <div class="lib-tab" data-tab="fav" id="tabFav">我的收藏</div>
-          <div class="lib-tab" data-tab="scene" id="tabScene">场景单词</div>
+      <!-- 阅读 -->
+      <section class="state hidden" id="state-reading">
+        <div class="sec-head">
+          <div class="sec-title">入门英语短文</div>
+          <div class="pop-refresh" id="readRefresh">↻ 换一批</div>
         </div>
-        <div class="lib-panel" id="panel-recent">
-          <div class="lib-list" id="lib-recent"></div>
-          <div class="lib-empty" id="lib-recent-empty" style="display:none">还没有查询记录，去「查近义词」试试吧</div>
-        </div>
-        <div class="lib-panel hidden" id="panel-fav">
-          <div class="lib-review" id="lib-review" style="display:none">开始复习（待复习 <span id="reviewBadge">0</span> 个）</div>
-          <div class="lib-list" id="lib-fav"></div>
-          <div class="lib-empty" id="lib-fav-empty" style="display:none">收藏后这里会出现生词本，点结果页「☆ 收藏」加入复习计划</div>
-        </div>
-        <div class="lib-panel hidden" id="panel-scene">
-          <div id="lib-scene"></div>
-        </div>
+        <div class="read-list" id="readList"></div>
       </section>
 
-      <!-- 库中点开的详情 -->
-      <section class="state hidden" id="state-detail"></section>
+      <!-- 收藏 -->
+      <section class="state hidden" id="state-fav">
+        <div class="sec-head">
+          <div class="sec-title">我的收藏</div>
+        </div>
+        <div class="lib-review" id="favReview">开始复习（待复习 <span id="reviewBadge">0</span> 个）</div>
+        <div class="lib-list" id="favList"></div>
+      </section>
 
       <!-- 复习模式 -->
       <section class="state hidden" id="state-review"></section>
@@ -91,8 +83,9 @@
 
     <footer class="bottombar">
       <div class="tabbar">
-        <div class="tab active" id="tabQuery">查近义词</div>
-        <div class="tab" id="tabLib">近义词库</div>
+        <div class="tab active" id="tabHome">首页</div>
+        <div class="tab" id="tabRead">阅读</div>
+        <div class="tab" id="tabFav">收藏</div>
       </div>
     </footer>
   </div>
@@ -126,7 +119,7 @@
     <canvas id="shareCanvas" width="320" height="440" style="display:none"></canvas>
   </div>
 
-  <script src="/popular-data.js"></script>
+  <script src="/phrase-data.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

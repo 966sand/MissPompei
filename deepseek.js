@@ -78,12 +78,16 @@ function parseModelJSON(content) {
   throw new Error('模型返回的不是有效 JSON。原始内容前200字符：' + snippet);
 }
 
-// 单次请求（30s 超时）
-async function callDeepSeekOnce(userPrompt) {
+// 单次请求（30s 超时）；system 可选，maxTokens 可按场景放大
+async function callDeepSeekOnce(userPrompt, { system = '', maxTokens = 4000 } = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 30000);
 
   try {
+    const messages = [];
+    if (system) messages.push({ role: 'system', content: system });
+    messages.push({ role: 'user', content: userPrompt });
+
     const resp = await fetch(DEEPSEEK_API_URL, {
       method: 'POST',
       headers: {
@@ -92,11 +96,11 @@ async function callDeepSeekOnce(userPrompt) {
       },
       body: JSON.stringify({
         model: DEEPSEEK_MODEL,
-        messages: [{ role: 'user', content: userPrompt }],
+        messages,
         temperature: 0.3,
         response_format: { type: 'json_object' },
         thinking: { type: 'disabled' },
-        max_tokens: 4000,
+        max_tokens: maxTokens,
       }),
       signal: controller.signal,
     });
@@ -120,7 +124,7 @@ async function callDeepSeekOnce(userPrompt) {
 const RETRYABLE = new Set([429, 500, 502, 503, 504]);
 
 // 带退避的自动重试封装：吞掉大多数瞬时 503/超时/偶发 JSON 解析失败
-export async function callDeepSeek(userPrompt, { retries = 2, baseDelay = 1000 } = {}) {
+export async function callDeepSeek(userPrompt, { retries = 2, baseDelay = 1000, system = '', maxTokens = 4000 } = {}) {
   if (!DEEPSEEK_API_KEY) {
     throw new Error('服务端未配置 DEEPSEEK_API_KEY');
   }
@@ -128,7 +132,7 @@ export async function callDeepSeek(userPrompt, { retries = 2, baseDelay = 1000 }
   let lastErr;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      return await callDeepSeekOnce(userPrompt);
+      return await callDeepSeekOnce(userPrompt, { system, maxTokens });
     } catch (e) {
       lastErr = e;
       const status = e.status;
