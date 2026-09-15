@@ -1,4 +1,4 @@
-// app.js — 单词助手 前端交互
+// app.js — 英语口语助手 前端交互
 // 三个 tab：首页（口语翻译 / 近义词查询）· 阅读 · 收藏
 const $ = (s) => document.querySelector(s);
 const stateInput = $('#state-input');
@@ -54,7 +54,7 @@ let readLoading = false;
 let readSource = '';
 let expandedRead = new Set();
 
-const MAXLEN = { colloquial: 50, synonym: 100 };
+const MAXLEN = { colloquial: 200, synonym: 100 };
 const PLACEHOLDER = {
   colloquial: '输入中文，即刻翻译地道口语',
   synonym: '输入单词，多个单词用空格隔开',
@@ -67,9 +67,10 @@ function esc(s) {
   }[c]));
 }
 
-function setTip(msg) {
+function setTip(msg, kind = '') {
   tipEl.textContent = msg ? '⚠ ' + msg : '';
   tipEl.style.display = msg ? 'block' : 'none';
+  tipEl.dataset.kind = msg ? kind : '';
 }
 
 // ---------- 输入校验（与后端 validate.js 同一套规则） ----------
@@ -82,7 +83,7 @@ function validate(raw, m) {
     // 语言性错误优先于长度报错
     if (!CN_RE.test(s)) return EN_RE.test(s) ? '抱歉，目前暂时不支持英翻中' : '请输入中文，口语翻译只支持中文';
     const len = [...s].length;
-    if (len > 50) return `最多支持 50 个字，当前 ${len} 个字`;
+    if (len > 200) return `最多支持 200 个字符，当前 ${len} 个字符`;
     const cn = (s.match(CN_RE_G) || []).length;
     const cjk = (s.match(KANA_HANGUL_RE) || []).length;
     if (cjk > 0 && cjk >= cn) return '请输入中文，口语翻译只支持中文';
@@ -99,14 +100,21 @@ function updateCounter() {
   const max = MAXLEN[mode];
   const len = [...qEl.value.trim()].length;
   counterEl.textContent = `${len}/${max}`;
-  counterEl.classList.toggle('over', len > max);
+  const over = len > max;
+  counterEl.classList.toggle('over', over);
+  // 超限即时提示（不覆盖其他类型的错误提示）
+  if (over) setTip(`最多支持 ${max} 个字符，当前 ${len} 个字符`, 'over');
+  else if (tipEl.dataset.kind === 'over') setTip('');
 }
 function setMode(next, { keepValue = true } = {}) {
   mode = next;
   document.querySelectorAll('.mode-opt').forEach((el) => {
     el.classList.toggle('active', el.dataset.mode === next);
   });
-  qEl.setAttribute('maxlength', String(MAXLEN[next]));
+  // 口语模式不设 maxlength：由计数器 + 实时提示把关，超限提示才真正可达；
+  // 近义词模式保持原 100 字符硬上限（规则不变）
+  if (next === 'colloquial') qEl.removeAttribute('maxlength');
+  else qEl.setAttribute('maxlength', String(MAXLEN[next]));
   qEl.setAttribute('placeholder', PLACEHOLDER[next]);
   if (!keepValue) qEl.value = '';
   setTip('');
@@ -141,7 +149,8 @@ function showTab(tab) {
 async function run(forced) {
   const input = (forced != null ? String(forced) : qEl.value).trim();
   const v = validate(input, mode);
-  if (v) { setTip(v); return; }
+  // 超限类提示打上 kind，输入字数回落时才会自动消失（否则会一直挂着）
+  if (v) { setTip(v, /最多支持 \d+ 个字符/.test(v) ? 'over' : ''); return; }
   setTip('');
   if (forced == null) qEl.value = input;
 
@@ -680,10 +689,10 @@ function renderReading() {
 function shareTitle() {
   if (currentKind === 'colloquial') {
     const zh = (currentData && currentData.zh) || currentInput || '';
-    return zh ? `单词助手：${zh}的地道口语` : '单词助手：地道口语翻译';
+    return zh ? `英语口语助手：${zh}的地道口语` : '英语口语助手：地道口语翻译';
   }
   const d = currentData;
-  if (!d) return '单词助手：近义词辨析';
+  if (!d) return '英语口语助手：近义词辨析';
   let words = [];
   if (d.mode === 'multi') words = (d.words || []).map((w) => w.word);
   else {
@@ -693,9 +702,9 @@ function shareTitle() {
   }
   words = words.filter(Boolean);
   if (!words.length) words = [(currentInput || '').trim()].filter(Boolean);
-  if (!words.length) return '单词助手：近义词辨析';
+  if (!words.length) return '英语口语助手：近义词辨析';
   const core = words.length <= 2 ? words.join('、') : (words.slice(0, 2).join('、') + '等');
-  return '单词助手：' + core + '的差异';
+  return '英语口语助手：' + core + '的差异';
 }
 
 function buildShareUrl() {
@@ -748,7 +757,7 @@ function drawShareCard(ctx, W, H) {
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H);
   ctx.fillStyle = '#1E63D0'; ctx.fillRect(0, 0, W, 80);
   drawLogo(ctx, 20, 20, 40);
-  ctx.fillStyle = '#ffffff'; ctx.font = 'bold 19px sans-serif'; ctx.fillText('单词助手', 70, 42);
+  ctx.fillStyle = '#ffffff'; ctx.font = 'bold 19px sans-serif'; ctx.fillText('英语口语助手', 70, 42);
   ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.font = '11px sans-serif';
   ctx.fillText(currentKind === 'colloquial' ? '地道口语翻译' : '英语近义词辨析', 70, 60);
 
@@ -814,7 +823,7 @@ function drawShareCard(ctx, W, H) {
     }
   }
   ctx.fillStyle = '#9aa7bd'; ctx.font = '11px sans-serif';
-  ctx.fillText('微信搜索「单词助手」体验完整辨析', 20, H - 18);
+  ctx.fillText('微信搜索「英语口语助手」体验完整辨析', 20, H - 18);
 }
 
 function openShareSheet() {

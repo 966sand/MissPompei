@@ -32,13 +32,13 @@ export function toTokens(input) {
     .filter((t) => t.length > 0);
 }
 
-// 口语翻译输入校验：只支持「纯中文」与「中英混合」，1–50 字
+// 口语翻译输入校验：只支持「纯中文」与「中英混合」，1–200 个字符
 // 规则（按「越致命越先报」排序）：
 //   1. 空输入 → 「请输入要翻译的中文」
 //   2. 一个中文字符都没有（语言性错误，优先于长度报错）：
 //        - 含英文字母（如整句英文）→ 「抱歉，目前暂时不支持英翻中」
 //        - 其他（如纯日文假名）→ 「请输入中文，口语翻译只支持中文」
-//   3. 超过 50 字 → 「最多支持 50 个字」
+//   3. 超过 200 个字符 → 「最多支持 200 个字符」
 //   4. 中日韩混排时中文不占主体 → 「请输入中文，口语翻译只支持中文」
 export function validateColloquialInput(raw) {
   const s = (raw || '').trim();
@@ -52,7 +52,7 @@ export function validateColloquialInput(raw) {
   }
 
   const len = [...s].length;
-  if (len > 50) return { ok: false, msg: `最多支持 50 个字，当前 ${len} 个字` };
+  if (len > 200) return { ok: false, msg: `最多支持 200 个字符，当前 ${len} 个字符` };
 
   // 中日韩混排时，中文必须占主体，避免整段日文/韩文被当成中文送进去
   const cjk = (s.match(KANA_HANGUL_RE) || []).length;
