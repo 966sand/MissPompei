@@ -25,6 +25,11 @@ const RECENT_KEY = 'ms_recent';
 const FAV_KEY = 'ms_favorites';
 const REVIEW_DAYS = [1, 2, 4, 7, 15];
 const CN_RE = /[\u3400-\u4dbf\u4e00-\u9fff]/;
+const CN_RE_G = /[\u3400-\u4dbf\u4e00-\u9fff]/g;
+// 是否含英文字母（用于区分「整句英文」与其他非中文输入）
+const EN_RE = /[A-Za-z]/;
+// 日文假名 / 韩文谚文
+const KANA_HANGUL_RE = /[\u3040-\u30ff\uac00-\ud7af]/g;
 const SPEAKER = '<svg class="sp-ico" viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z"/></svg>';
 const ACCENTS = ['var(--blue)', 'var(--green)', 'var(--orange)'];
 
@@ -68,13 +73,19 @@ function setTip(msg) {
 }
 
 // ---------- 输入校验（与后端 validate.js 同一套规则） ----------
+// 口语翻译：只支持「纯中文」与「中英混合」；完全不含中文时，含英文字母 →
+// 「抱歉，目前暂时不支持英翻中」，其他（如纯日文假名）→ 「请输入中文，口语翻译只支持中文」
 function validate(raw, m) {
   const s = (raw || '').trim();
   if (m === 'colloquial') {
     if (!s) return '请输入要翻译的中文';
+    // 语言性错误优先于长度报错
+    if (!CN_RE.test(s)) return EN_RE.test(s) ? '抱歉，目前暂时不支持英翻中' : '请输入中文，口语翻译只支持中文';
     const len = [...s].length;
     if (len > 50) return `最多支持 50 个字，当前 ${len} 个字`;
-    if (!CN_RE.test(s)) return '请输入中文，口语翻译只支持中文';
+    const cn = (s.match(CN_RE_G) || []).length;
+    const cjk = (s.match(KANA_HANGUL_RE) || []).length;
+    if (cjk > 0 && cjk >= cn) return '请输入中文，口语翻译只支持中文';
     return '';
   }
   if (!s) return '请输入要查询的单词';
