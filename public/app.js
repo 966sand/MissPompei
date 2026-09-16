@@ -686,11 +686,17 @@ function renderReading() {
 }
 
 // ══════════ 分享 ══════════
+// 分享标题：按「当前场景」给一句固定口号（口语 / 近义各一句），**与有无结果无关** ——
+// 分享小程序/站点本身和分享翻译后的结果页共用同一句。
+// 未出结果时用 mode 而非 currentKind：后者的初值是 'synonym'，会把口语场景误报成近义词。
 function shareTitle() {
-  if (currentKind === 'colloquial') {
-    const zh = (currentData && currentData.zh) || currentInput || '';
-    return zh ? `英语口语助手：${zh}的地道口语` : '英语口语助手：地道口语翻译';
-  }
+  const k = currentData ? currentKind : mode;
+  return k === 'colloquial' ? '地道口语就找英语口语助手' : '近义词辨析就找英语口语助手';
+}
+
+// 分享长图用的「内容标题」，只在近义长图上渲染（口语长图不渲染标题）。
+// 与分享标题解耦：长图是海报，标题带具体词才有上下文。行为与改造前逐字一致。
+function resultCaption() {
   const d = currentData;
   if (!d) return '英语口语助手：近义词辨析';
   let words = [];
@@ -698,7 +704,7 @@ function shareTitle() {
   else {
     const p = (d.primary && d.primary.word) || '';
     const syns = (d.synonyms || []).map((w) => w.word);
-    words = [p].concat(syns).filter(Boolean);
+    words = [p].concat(syns);
   }
   words = words.filter(Boolean);
   if (!words.length) words = [(currentInput || '').trim()].filter(Boolean);
@@ -793,7 +799,7 @@ function drawShareCard(ctx, W, H) {
   } else {
     const d = currentData || {};
     ctx.fillStyle = '#1f2937'; ctx.font = 'bold 18px sans-serif';
-    ctx.fillText(trunc(ctx, shareTitle(), W - 40), 20, 120);
+    ctx.fillText(trunc(ctx, resultCaption(), W - 40), 20, 120);
     const isMulti = d.mode === 'multi';
     const mainWord = isMulti ? (d.words || []).map((w) => w.word).join(' / ') : ((d.primary && d.primary.word) || '');
     ctx.fillStyle = '#1E63D0'; ctx.font = 'bold 22px sans-serif';

@@ -2,6 +2,7 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { dirname, join, extname, normalize, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -47,7 +48,10 @@ function readBody(req, limit = 1_000_000) {
   });
 }
 
-async function serveStatic(pathname, res) {
+// 静态资源：内容指纹 + no-cache，客户端每次都回源校验（命中则 304）。
+// 此前只发 Content-Type，没有任何缓存指令或校验器，客户端无回源依据：
+// 换了品牌名/改了口径，手机和微信内核仍可能无限期停在旧页面（「顶部还是旧名字」就是这么来的）。
+async function serveStatic(req, pathname, res) {
   const rel = pathname === '/' ? '/index.html' : pathname;
   const filePath = normalize(join(PUBLIC_DIR, rel));
   // 防目录穿越
@@ -58,7 +62,16 @@ async function serveStatic(pathname, res) {
   try {
     const data = await readFile(filePath);
     const mt = MIME[extname(filePath)] || 'application/octet-stream';
-    res.writeHead(200, { 'Content-Type': mt });
+    const etag = '"' + createHash('sha1').update(data).digest('hex').slice(0, 16) + '"';
+    if (req.headers['if-none-match'] === etag) {
+      res.writeHead(304, { ETag: etag, 'Cache-Control': 'no-cache' });
+      return res.end();
+    }
+    res.writeHead(200, {
+      'Content-Type': mt,
+      'Cache-Control': 'no-cache',
+      ETag: etag,
+    });
     res.end(data);
   } catch {
     res.writeHead(404);
@@ -281,7 +294,7 @@ const server = createServer(async (req, res) => {
       return await handleTTS(url, res);
     }
     if (req.method === 'GET') {
-      return await serveStatic(url.pathname, res);
+      return await serveStatic(req, url.pathname, res);
     }
   } catch {
     res.writeHead(500, { 'Content-Type': 'application/json' });
