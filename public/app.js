@@ -43,6 +43,10 @@ let currentInput = '';
 let currentData = null;
 let currentKind = 'synonym';
 
+// 请求序号：每次 run() 自增，响应回来时比对，丢弃被后续请求取代的过期响应。
+// 与小程序 pages/index/index.js 的 _reqSeq 同一套做法。
+let reqSeq = 0;
+
 let favCache = [];
 let reviewList = [];
 let reviewIdx = 0;
@@ -148,32 +152,54 @@ function showTab(tab) {
 // ---------- 查询 ----------
 async function run(forced) {
   const input = (forced != null ? String(forced) : qEl.value).trim();
-  const v = validate(input, mode);
+  // 场景必须在 await 之前捕获：mode 是全局变量，setMode() / openFavItem() / onRecentTap()
+  // 都会在请求在途时改掉它。此前 currentKind = mode 写在两次 await 之后，
+  // 用户若中途切了场景，就会出现「currentData 是 A 类结果、currentKind 标成 B 类」
+  // —— 收藏归类与分享长图都读 currentKind，会被打歪（画面本身按 data.mode 分流，不受影响）。
+  const reqKind = mode;
+  const seq = ++reqSeq;
+
+  const v = validate(input, reqKind);
   // 超限类提示打上 kind，输入字数回落时才会自动消失（否则会一直挂着）
   if (v) { setTip(v, /最多支持 \d+ 个字符/.test(v) ? 'over' : ''); return; }
   setTip('');
   if (forced == null) qEl.value = input;
 
   queryView = 'loading';
-  loadingText.textContent = mode === 'colloquial' ? '翻译中…' : '查询中…';
+  loadingText.textContent = reqKind === 'colloquial' ? '翻译中…' : '查询中…';
   paintTab();
   screenTop();
+
+  // 这次响应是否还该生效。返回 true 表示作废。
+  // 注意两种作废要区别对待：序号被取代时**什么都别动** —— 更新的那个请求正在跑、
+  // 且已经设过 loading，动视图会把它的转圈打掉（连点两次 GO 会闪）。只有「序号仍最新、
+  // 但用户切了场景」才需要自己收尾，否则会卡在 loading。
+  const stale = () => {
+    if (seq !== reqSeq) return true;
+    if (reqKind !== mode) {
+      if (queryView === 'loading') { queryView = 'input'; paintTab(); }
+      return true;
+    }
+    return false;
+  };
 
   try {
     const resp = await fetch('/api/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ input, kind: mode }),
+      body: JSON.stringify({ input, kind: reqKind }),
     });
     const data = await resp.json();
+    if (stale()) return;
     if (!resp.ok) throw new Error(data.error || '请求失败');
     currentInput = input;
     currentData = data;
-    currentKind = mode;
+    currentKind = reqKind;
     renderResult(data, stateResult);
-    pushRecent(input, mode, data);
+    pushRecent(input, reqKind, data);
     queryView = 'result';
   } catch (e) {
+    if (stale()) return;
     queryView = 'input';
     setTip(e.message || '服务暂时不可用');
   }
@@ -720,7 +746,9 @@ function buildShareUrl() {
   return 'https://misspompei.onrender.com/?' + p.toString();
 }
 
-// 圆角 logo（蓝色方块 + 白色「词」）
+// 圆角 logo：纯渐变方块，不落单字。
+// 原先方块里写死白色「词」字（「单词助手」时期字形），与紧邻的「英语口语助手」自相矛盾；
+// 而口语/近义两个场景共用同一块品牌位，任何单字都偏袒一边，故留白。
 function drawLogo(ctx, x, y, size) {
   const r = size * 0.25;
   ctx.beginPath();
@@ -733,10 +761,6 @@ function drawLogo(ctx, x, y, size) {
   const grad = ctx.createLinearGradient(x, y, x + size, y + size);
   grad.addColorStop(0, '#2f7be0'); grad.addColorStop(1, '#1E63D0');
   ctx.fillStyle = grad; ctx.fill();
-  ctx.fillStyle = '#ffffff'; ctx.font = 'bold ' + Math.floor(size * 0.5) + 'px sans-serif';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText('词', x + size / 2, y + size / 2 + 1);
-  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
 }
 
 function trunc(ctx, text, maxW) {
