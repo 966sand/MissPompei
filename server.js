@@ -18,6 +18,15 @@ import {
 } from './prompts.js';
 import { callDeepSeek } from './deepseek.js';
 import { READING_POOL } from './reading-pool.js';
+import {
+  originOf,
+  renderPhrasePage,
+  renderReadPage,
+  renderRobots,
+  renderSitemap,
+  renderIndexHead,
+  renderPopularHtml,
+} from './content-pages.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(__dirname, 'public');
@@ -75,7 +84,18 @@ async function serveStatic(req, pathname, res) {
     return res.end('Forbidden');
   }
   try {
-    const data = await readFile(filePath);
+    let data = await readFile(filePath);
+    // 首页是 SPA 外壳，但爬虫需要一个「这不是空站」的最小信号：
+    // 注入 head 元数据 + 把前几条热门短语预渲染成真实链接（不执行 JS 也能发现内容页）。
+    if (rel === '/index.html') {
+      const origin = originOf(req);
+      data = Buffer.from(
+        String(data)
+          .replace('<!--SEO_HEAD-->', renderIndexHead(origin))
+          .replace('<!--PRERENDER:POPULAR-->', renderPopularHtml()),
+        'utf8'
+      );
+    }
     const mt = MIME[extname(filePath)] || 'application/octet-stream';
     const etag = '"' + createHash('sha1').update(data).digest('hex').slice(0, 16) + '"';
     if (etagMatches(req.headers['if-none-match'], etag)) {
@@ -286,6 +306,54 @@ async function handleTTS(url, res) {
   res.end(buf);
 }
 
+// ---------- 内容页 / 爬虫文件（服务端渲染） ----------
+// 全站是 SPA —— index.html 的正文容器是空的，文字全靠 app.js 注入，而查询又走
+// POST /api/analyze 不产生 URL。对爬虫而言整站只有一个没有内容的地址。
+// 这里把已有内容资产渲染成**独立、不依赖 JS 的完整页面**，并生成 sitemap/robots。
+// 页面同样走 no-cache + ETag，避免 CDN 或浏览器长期缓存住旧版式。
+function sendMarkup(res, req, type, body, status = 200) {
+  const data = Buffer.from(body, 'utf8');
+  const etag = '"' + createHash('sha1').update(data).digest('hex').slice(0, 16) + '"';
+  if (etagMatches(req.headers['if-none-match'], etag)) {
+    res.writeHead(304, { ETag: etag, 'Cache-Control': 'no-cache' });
+    return res.end();
+  }
+  res.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'no-cache', ETag: etag });
+  res.end(data);
+}
+
+function notFoundPage() {
+  return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>页面不存在 · 英语口语助手</title>
+<meta name="robots" content="noindex" />
+<link rel="stylesheet" href="/content.css" />
+</head>
+<body>
+<header class="hd"><a class="hd-brand" href="/">英语口语助手</a></header>
+<main class="wrap">
+  <h1>没有找到这个页面</h1>
+  <p class="lead">链接可能写错了，或者这条内容已经被移除。</p>
+  <a class="cta" href="/">回到英语口语助手首页</a>
+</main>
+</body>
+</html>
+`;
+}
+
+function handleContentPage(req, res, kind, slug) {
+  const origin = originOf(req);
+  const page =
+    kind === 'phrase' ? renderPhrasePage(slug, origin) : renderReadPage(slug, origin);
+  // 找不到必须给 404：若返回 200，搜索引擎会把不存在的 slug 当有效页收录，
+  // 站内产生大量软 404，反过来拖累整站抓取优先级。
+  if (!page) return sendMarkup(res, req, 'text/html; charset=utf-8', notFoundPage(), 404);
+  return sendMarkup(res, req, 'text/html; charset=utf-8', page.html);
+}
+
 const server = createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
@@ -309,6 +377,14 @@ const server = createServer(async (req, res) => {
       return await handleTTS(url, res);
     }
     if (req.method === 'GET') {
+      if (url.pathname === '/robots.txt') {
+        return sendMarkup(res, req, 'text/plain; charset=utf-8', renderRobots(originOf(req)));
+      }
+      if (url.pathname === '/sitemap.xml') {
+        return sendMarkup(res, req, 'application/xml; charset=utf-8', renderSitemap(originOf(req)));
+      }
+      const m = url.pathname.match(/^\/(phrase|read)\/([a-z0-9][a-z0-9-]*)\/?$/);
+      if (m) return handleContentPage(req, res, m[1], m[2]);
       return await serveStatic(req, url.pathname, res);
     }
   } catch {

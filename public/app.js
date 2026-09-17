@@ -664,11 +664,17 @@ function renderPhrases() {
   const start = (popPage * size) % all.length;
   const page = [];
   for (let i = 0; i < size; i++) page.push(all[(start + i) % all.length]);
-  popEl.innerHTML = page.map((p) => `
-    <div class="pop-item" data-phrase="${esc(p.cn)}">
+  // 输出真 <a> 而不是 <div>：让爬虫不执行 JS 也能顺着链接发现 /phrase/<slug> 内容页。
+  // 点击仍由下方事件委托接管（preventDefault + 填入输入框），人类用户感受不到差别；
+  // 想开新窗口看内容页，中键/长按即可，走的还是真链接。
+  popEl.innerHTML = page.map((p) => {
+    const href = p.slug ? ` href="/phrase/${esc(p.slug)}"` : '';
+    return `
+    <a class="pop-item"${href} data-phrase="${esc(p.cn)}">
       <div class="pi-en">${esc(p.en)}</div>
       <div class="pi-cn">${esc(p.cn)}</div>
-    </div>`).join('');
+    </a>`;
+  }).join('');
 }
 
 // ══════════ 阅读 ══════════
@@ -1057,6 +1063,8 @@ document.addEventListener('click', (e) => {
 
   const phrase = e.target.closest('[data-phrase]');
   if (phrase) {
+    // 热门短语现在是 <a href="/phrase/...">，这里拦掉默认跳转，保持「点一下直接查」的老手感
+    e.preventDefault();
     setMode('colloquial', { keepValue: false });
     qEl.value = phrase.dataset.phrase;
     updateCounter();
@@ -1098,6 +1106,17 @@ renderRecent();
 renderPhrases();
 renderFavList();
 paintTab();
+
+// 从内容页（/phrase/<slug>）的 CTA 进来时会带 ?q=<中文>，等价于用户已经按下 go：
+// 直接填好输入框并开查，省掉一次手动粘贴。内容页是给搜索引擎看的，这条是给真人的闭环。
+// 上限与口语模式一致（200 字符），超长不报错、直接截断 —— 这里只是预填，不做校验。
+const bootQ = (new URLSearchParams(location.search).get('q') || '').trim();
+if (bootQ) {
+  qEl.value = bootQ.slice(0, 200);
+  updateCounter();
+  run();
+}
+
 // 打开首页就把阅读文章预取下来（命中缓存则立即返回），
 // 这样用户点「阅读」tab 时通常已经就绪，不必干等一次生成。
 // 必须放在所有同步初始化之后：它是异步的，不会阻塞首屏。
