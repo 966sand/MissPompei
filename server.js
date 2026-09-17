@@ -26,6 +26,7 @@ import {
   renderSitemap,
   renderIndexHead,
   renderPopularHtml,
+  renderReadsHtml,
 } from './content-pages.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -38,6 +39,9 @@ const MIME = {
   '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
+  // og:image 是社交平台的抓取目标，MIME 必须准确 ——
+  // 缺这一条会退化成 application/octet-stream，部分平台直接拒绝缩略图。
+  '.png': 'image/png',
 };
 
 function readBody(req, limit = 1_000_000) {
@@ -92,7 +96,8 @@ async function serveStatic(req, pathname, res) {
       data = Buffer.from(
         String(data)
           .replace('<!--SEO_HEAD-->', renderIndexHead(origin))
-          .replace('<!--PRERENDER:POPULAR-->', renderPopularHtml()),
+          .replace('<!--PRERENDER:POPULAR-->', renderPopularHtml())
+          .replace('<!--PRERENDER:READS-->', renderReadsHtml()),
         'utf8'
       );
     }
@@ -108,7 +113,10 @@ async function serveStatic(req, pathname, res) {
       ETag: etag,
     });
     res.end(data);
-  } catch {
+  } catch (e) {
+    // 不能静默吞掉：文件缺失与「文件在但渲染出错」都会落到这里，
+    // 没有日志的话两者在线上完全无从区分（都只是 404）。
+    if (e && e.code !== 'ENOENT') console.error('[static]', rel, e && e.message);
     res.writeHead(404);
     res.end('Not Found');
   }

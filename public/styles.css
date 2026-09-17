@@ -48,12 +48,14 @@ body {
 }
 .topbar::before { width: 120px; height: 120px; top: -50px; left: -20px; }
 .topbar::after { width: 90px; height: 90px; bottom: -40px; right: -10px; opacity: .06; }
+/* 顶栏品牌是首页唯一的 h1，副标题作为它的第二行。
+   两者都用 class 控字号，这里补上浏览器对 h1 的默认 margin 重置。 */
 .appname {
   font-family: Georgia, "Times New Roman", serif;
   font-size: 22px; font-weight: 700; position: relative;
-  cursor: pointer;
+  cursor: pointer; margin: 0;
 }
-.subtitle { font-size: 11px; opacity: .92; margin-top: 2px; position: relative; }
+.subtitle { display: block; font-size: 11px; font-weight: 400; opacity: .92; margin-top: 2px; position: relative; }
 
 /* 屏幕 */
 .screen { flex: 1; padding: 16px; overflow-y: auto; }
@@ -103,7 +105,7 @@ body {
 
 /* ── 最近查询 / 热门短语 ── */
 .recent { margin-top: 22px; }
-.recent-label { font-size: 12px; color: var(--sub); margin-bottom: 10px; }
+.recent-label { font-size: 12px; font-weight: 400; color: var(--sub); margin: 0 0 10px; }
 .recent-list { display: flex; flex-direction: column; gap: 8px; }
 .recent-item {
   background: #fff; border: 1px solid #EDEFF3; border-radius: 10px;
@@ -139,7 +141,7 @@ body {
 
 /* ── 分区标题（阅读 / 收藏共用） ── */
 .sec-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
-.sec-title { font-size: 16px; font-weight: 700; color: #234E78; }
+.sec-title { font-size: 16px; font-weight: 700; color: #234E78; margin: 0; }
 
 /* 加载骨架 */
 .sk-card {
@@ -299,6 +301,10 @@ body {
 
 /* ══════ 阅读 ══════ */
 .read-list { display: flex; flex-direction: column; gap: 10px; }
+/* 首页预渲染的文章入口必须是 <a>（爬虫不执行 JS 也得能发现它们），
+   外观上仍按卡片呈现，与 app.js 渲染的结果一致。 */
+.read-link { display: block; text-decoration: none; color: inherit; }
+.read-link:active { background: #f7faff; }
 .read-card {
   background: #fff; border: 1px solid #EDEFF3; border-radius: 12px;
   padding: 14px; box-shadow: 0 2px 8px rgba(60,130,200,.06);

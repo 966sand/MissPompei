@@ -11,8 +11,9 @@
   <div class="phone">
     <header class="topbar">
       <div class="back-btn hidden" id="backBtn">&#8592;</div>
-      <div class="appname" id="appname">地道口语助手</div>
-      <div class="subtitle">英语口语翻译 · 近义词辨析</div>
+      <!-- 首页此前没有任何 h1：爬虫不执行 JS，正文全靠 app.js 注入，
+           等于拿不到「这个页面讲什么」。用 h1 同时包住品牌名与功能词。 -->
+      <h1 class="appname" id="appname">地道口语助手<span class="subtitle">英语口语翻译 · 近义词辨析</span></h1>
       <div class="help-btn" id="helpBtn">?</div>
     </header>
     <div class="help-bubble hidden" id="helpBubble">生活和工作里的话，怎么写才像母语者说的。</div>
@@ -42,7 +43,7 @@
 
         <div class="popular">
           <div class="popular-head">
-            <div class="recent-label">热门短语</div>
+            <h2 class="recent-label">热门短语</h2>
             <div class="pop-refresh" id="popRefresh">↻ 换一批</div>
           </div>
           <div class="popular-list" id="popList"><!--PRERENDER:POPULAR--></div>
@@ -63,16 +64,18 @@
       <!-- 阅读 -->
       <section class="state hidden" id="state-reading">
         <div class="sec-head">
-          <div class="sec-title">入门英语短文</div>
+          <h2 class="sec-title">入门英语短文</h2>
           <div class="pop-refresh" id="readRefresh">↻ 换一批</div>
         </div>
-        <div class="read-list" id="readList"></div>
+        <!-- 预渲染入口：28 篇文章页此前在站内没有任何链接指向它们，
+             只能靠 sitemap 被发现。这里给爬虫（以及首屏）一个真实的 <a> 入口。 -->
+        <div class="read-list" id="readList"><!--PRERENDER:READS--></div>
       </section>
 
       <!-- 收藏 -->
       <section class="state hidden" id="state-fav">
         <div class="sec-head">
-          <div class="sec-title">我的收藏</div>
+          <h2 class="sec-title">我的收藏</h2>
         </div>
         <div class="lib-review" id="favReview">开始复习（待复习 <span id="reviewBadge">0</span> 个）</div>
         <div class="lib-list" id="favList"></div>

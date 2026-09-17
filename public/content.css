@@ -53,6 +53,18 @@ h1 {
   margin: 0 0 14px;
 }
 
+/* 文章页的 h1 里除了英文标题，还挂一行中文副标题：
+   让主标题同时含中文搜索词（英语短文 / 中英对照），
+   又不至于把英文标题（28 篇标题唯一性的来源）挤掉。 */
+.h1-cn {
+  display: block;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-2);
+  margin-top: 6px;
+  line-height: 1.5;
+}
+
 h2 {
   font-size: 15px;
   font-weight: 600;

@@ -144,7 +144,19 @@ export function originOf(req) {
 
 // ══════════ 版式 ══════════
 
-function layout({ title, description, canonical, ld, bodyHtml }) {
+function layout({ title, description, canonical, origin, ld, bodyHtml }) {
+  const ogImage = `${origin}/og-image.png`;
+  // 站点名不该靠挤占标题配额来曝光：搜索引擎会在结果标题上方单独标注站点名，
+  // 来源就是 WebSite 结构化数据与 og:site_name。这样品牌每一页都出现，
+  // 却一个字都不占用标题里的关键词空间。
+  const siteLd = {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: SITE_NAME,
+    alternateName: `${SITE_NAME} · 英语口语翻译 · 近义词辨析`,
+    url: `${origin}/`,
+    inLanguage: ['zh-CN', 'en'],
+  };
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -158,9 +170,15 @@ function layout({ title, description, canonical, ld, bodyHtml }) {
 <meta property="og:title" content="${esc(title)}" />
 <meta property="og:description" content="${esc(description)}" />
 <meta property="og:url" content="${esc(canonical)}" />
-<meta name="twitter:card" content="summary" />
+<meta property="og:image" content="${esc(ogImage)}" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="${esc(`${SITE_NAME} · ${SITE_SLOGAN}`)}" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:image" content="${esc(ogImage)}" />
 <link rel="stylesheet" href="/content.css" />
 <script type="application/ld+json">${jsonld(ld)}</script>
+<script type="application/ld+json">${jsonld(siteLd)}</script>
 </head>
 <body>
 <header class="hd">
@@ -187,10 +205,17 @@ export function renderPhrasePage(slug, origin) {
   if (!p) return null;
 
   const canonical = `${origin}/phrase/${p.slug}`;
-  const title = `「${p.cn}」用英语怎么说？地道说法是 ${p.en}`;
+  // 标题是 SERP 里的零和配额：一屏约 60 个半角宽（≈30 汉字），而
+  // 「中文原句 + 用英语怎么说？ + 答案」本身就已经接近满了。
+  // 再挂一个品牌名后缀，换来的是「答案尾部被截掉」——净亏。
+  // 所以品牌名不进短语页标题，改由页面 h1/页脚/og:site_name 承载；
+  // 这里只对极长答案做截断，保证「这句话有答案」这件事一定出现在可见区。
+  const enShown = p.en.length > 30 ? p.en.slice(0, 28).trimEnd() + '…' : p.en;
+  const title = `「${p.cn}」用英语怎么说？地道说法是 ${enShown}`;
   const description =
     `中文「${p.cn}」的地道英文表达是 ${p.en} ` +
-    `—— 不是逐字直译，而是母语者在同样场合真正会说的说法。附发音、相关表达与完整解析。`;
+    `—— 不是逐字直译，而是母语者在同样场合真正会说的说法。` +
+    `附发音、相关表达与完整解析，由${SITE_NAME}整理。`;
 
   const rel = neighbors(all, p.idx);
   const relHtml = rel
@@ -242,7 +267,7 @@ document.querySelectorAll('.tts').forEach(function (b) {
 });
   </script>`;
 
-  return { html: layout({ title, description, canonical, ld, bodyHtml }), canonical, title };
+  return { html: layout({ title, description, canonical, origin, ld, bodyHtml }), canonical, title };
 }
 
 // ══════════ 文章页 ══════════
@@ -253,9 +278,17 @@ export function renderReadPage(slug, origin) {
   if (!a) return null;
 
   const canonical = `${origin}/read/${a.slug}`;
-  const title = `${a.title} — 入门英语短文（含翻译要点）`;
+  // 原标题是 `My Simple Healthy Habits — 入门英语短文（含翻译要点）`：
+  // 以英文开头，中文用户不会那样搜；「含翻译要点」也不是任何人的搜索词。
+  // 现在把中文主题词提上来。英文标题必须留着 ——
+  // topic 只有 21 个而文章有 28 篇，去掉它就会撞出重复标题。
+  // 不挂品牌名：英文标题本就长（最长 30 半角），加了会把标题顶出 SERP 一屏。
+  // 品牌改由「站点名标注」承担（见 layout 里的 WebSite 结构化数据 + og:site_name），
+  // 那条路径不占用标题配额。
+  const title = `${a.title}（${a.topic}）英语短文`;
   const plain = a.body.replace(/\s+/g, ' ').trim();
-  const description = `${a.title}：${plain.slice(0, 110)}…`;
+  const description =
+    `${a.topic}主题英语短文，中英对照并附重点词汇与翻译要点：${plain.slice(0, 100)}… 由${SITE_NAME}整理。`;
 
   const paras = a.body
     .split(/\n{2,}/)
@@ -288,9 +321,8 @@ export function renderReadPage(slug, origin) {
     publisher: { '@type': 'Organization', name: SITE_NAME },
   };
 
-  const bodyHtml = `  <p class="crumb"><a href="/">首页</a> / 入门英语短文</p>
-  <p class="topic">${esc(a.topic)}</p>
-  <h1 lang="en">${esc(a.title)}</h1>
+  const bodyHtml = `  <p class="crumb"><a href="/">首页</a> / 英语短文 / ${esc(a.topic)}</p>
+  <h1><span lang="en">${esc(a.title)}</span><span class="h1-cn">${esc(a.topic)}主题英语短文 · 中英对照</span></h1>
   <article class="article" lang="en">
     ${paras}
   </article>
@@ -303,7 +335,7 @@ ${wordsHtml}
     <ul class="rel-list">${relHtml}</ul>
   </section>`;
 
-  return { html: layout({ title, description, canonical, ld, bodyHtml }), canonical, title };
+  return { html: layout({ title, description, canonical, origin, ld, bodyHtml }), canonical, title };
 }
 
 // ══════════ robots.txt / sitemap.xml ══════════
@@ -369,6 +401,7 @@ export function renderIndexHead(origin) {
     '地道口语助手：输入中文，立刻得到母语者真正会说的那句地道英语 —— ' +
     '支持口语翻译、近义词辨析、真人发音、入门英语短文与收藏复习。附常用中文口语的地道英文说法。';
   const canonical = `${origin}/`;
+  const ogImage = `${origin}/og-image.png`;
 
   const ld = {
     '@context': 'https://schema.org',
@@ -383,6 +416,17 @@ export function renderIndexHead(origin) {
     offers: { '@type': 'Offer', price: '0', priceCurrency: 'CNY' },
   };
 
+  // 站点名标注的权威来源：内容页各自带 WebSite 实体，首页也必须带一份，
+  // 否则搜索引擎没有统一信号可用来在结果标题上方标注「地道口语助手」。
+  const siteLd = {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: SITE_NAME,
+    alternateName: `${SITE_NAME} · 英语口语翻译 · 近义词辨析`,
+    url: canonical,
+    inLanguage: ['zh-CN', 'en'],
+  };
+
   return `  <meta name="description" content="${esc(description)}" />
   <meta name="robots" content="index,follow" />
   <link rel="canonical" href="${esc(canonical)}" />
@@ -392,10 +436,16 @@ export function renderIndexHead(origin) {
   <meta property="og:title" content="${esc(title)}" />
   <meta property="og:description" content="${esc(description)}" />
   <meta property="og:url" content="${esc(canonical)}" />
-  <meta name="twitter:card" content="summary" />
+  <meta property="og:image" content="${esc(ogImage)}" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="${esc(`${SITE_NAME} · ${SITE_SLOGAN}`)}" />
+  <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="${esc(title)}" />
   <meta name="twitter:description" content="${esc(description)}" />
-  <script type="application/ld+json">${jsonld(ld)}</script>`;
+  <meta name="twitter:image" content="${esc(ogImage)}" />
+  <script type="application/ld+json">${jsonld(ld)}</script>
+  <script type="application/ld+json">${jsonld(siteLd)}</script>`;
 }
 
 // 与 app.js 的 renderPhrases() 输出同构 —— app 启动后会用相同内容覆盖，
@@ -408,6 +458,24 @@ export function renderPopularHtml(n = 5) {
         `<a class="pop-item" href="/phrase/${esc(p.slug)}" data-phrase="${esc(p.cn)}">` +
         `<div class="pi-en" lang="en">${esc(p.en)}</div>` +
         `<div class="pi-cn">${esc(p.cn)}</div></a>`
+    )
+    .join('');
+}
+
+// 文章页此前在站内**没有任何链接指向它们** —— 只能靠 sitemap 被发现，
+// 而 sitemap 只是「建议」，站内链接才是搜索引擎判断重要性的依据。
+// 这里给首页前几篇文章真实的 <a> 入口。锚文本用中文主题词而不是英文标题：
+// 锚文本是搜索引擎理解目标页主题的主要线索，中文词才有搜索价值。
+export function renderReadsHtml(n = 5) {
+  return reads()
+    .slice(0, n)
+    .map(
+      (a) =>
+        `<a class="read-card read-link" href="/read/${esc(a.slug)}">` +
+        `<div class="rc-top"><span class="rc-topic">${esc(a.topic)}</span>` +
+        `<span class="rc-len">英语短文</span></div>` +
+        `<div class="rc-title" lang="en">${esc(a.title)}</div>` +
+        `<div class="rc-sub">${esc(a.topic)}主题英语短文 · 中英对照 · 附重点词汇</div></a>`
     )
     .join('');
 }
