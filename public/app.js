@@ -1,4 +1,4 @@
-// app.js — 英语口语助手 前端交互
+// app.js — 地道口语助手 前端交互
 // 三个 tab：首页（口语翻译 / 近义词查询）· 阅读 · 收藏
 const $ = (s) => document.querySelector(s);
 const stateInput = $('#state-input');
@@ -778,14 +778,14 @@ function renderReading() {
 // 不分口语/近义、不分有无结果 —— 此前按场景分两句，线上实拍过「模式与文案对不上」，索性收敛为一句。
 // 不判断任何状态：无需区分 mode / currentKind，也就不会再踩 currentKind 初值写死 'synonym' 那个坑。
 function shareTitle() {
-  return '地道英语就用英语口语助手';
+  return '地道英语，就用地道口语助手';
 }
 
 // 分享长图用的「内容标题」，只在近义长图上渲染（口语长图不渲染标题）。
 // 与分享标题解耦：长图是海报，标题带具体词才有上下文。行为与改造前逐字一致。
 function resultCaption() {
   const d = currentData;
-  if (!d) return '英语口语助手：近义词辨析';
+  if (!d) return '地道口语助手：近义词辨析';
   let words = [];
   if (d.mode === 'multi') words = (d.words || []).map((w) => w.word);
   else {
@@ -795,9 +795,9 @@ function resultCaption() {
   }
   words = words.filter(Boolean);
   if (!words.length) words = [(currentInput || '').trim()].filter(Boolean);
-  if (!words.length) return '英语口语助手：近义词辨析';
+  if (!words.length) return '地道口语助手：近义词辨析';
   const core = words.length <= 2 ? words.join('、') : (words.slice(0, 2).join('、') + '等');
-  return '英语口语助手：' + core + '的差异';
+  return '地道口语助手：' + core + '的差异';
 }
 
 function buildShareUrl() {
@@ -809,7 +809,7 @@ function buildShareUrl() {
 }
 
 // 圆角 logo：纯渐变方块，不落单字。
-// 原先方块里写死白色「词」字（「单词助手」时期字形），与紧邻的「英语口语助手」自相矛盾；
+// 原先方块里写死白色「词」字（「单词助手」时期字形），与紧邻的「地道口语助手」自相矛盾；
 // 而口语/近义两个场景共用同一块品牌位，任何单字都偏袒一边，故留白。
 function drawLogo(ctx, x, y, size) {
   const r = size * 0.25;
@@ -848,9 +848,9 @@ function drawShareCard(ctx, W, H) {
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H);
   ctx.fillStyle = '#1E63D0'; ctx.fillRect(0, 0, W, 80);
   drawLogo(ctx, 20, 20, 40);
-  ctx.fillStyle = '#ffffff'; ctx.font = 'bold 19px sans-serif'; ctx.fillText('英语口语助手', 70, 42);
+  ctx.fillStyle = '#ffffff'; ctx.font = 'bold 19px sans-serif'; ctx.fillText('地道口语助手', 70, 42);
   ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.font = '11px sans-serif';
-  ctx.fillText(currentKind === 'colloquial' ? '地道口语翻译' : '英语近义词辨析', 70, 60);
+  ctx.fillText(currentKind === 'colloquial' ? '英语口语翻译' : '英语近义词辨析', 70, 60);
 
   if (currentKind === 'colloquial') {
     const d = currentData || {};
@@ -914,7 +914,7 @@ function drawShareCard(ctx, W, H) {
     }
   }
   ctx.fillStyle = '#9aa7bd'; ctx.font = '11px sans-serif';
-  ctx.fillText('微信搜索「英语口语助手」体验完整辨析', 20, H - 18);
+  ctx.fillText('微信搜索「地道口语助手」体验完整辨析', 20, H - 18);
 }
 
 function openShareSheet() {

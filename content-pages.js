@@ -22,8 +22,8 @@ import { READING_POOL } from './reading-pool.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(__dirname, 'public');
 
-const SITE_NAME = '英语口语助手';
-const SITE_SLOGAN = '地道口语翻译 · 近义词辨析';
+const SITE_NAME = '地道口语助手';
+const SITE_SLOGAN = '英语口语翻译 · 近义词辨析';
 
 // ══════════ 工具 ══════════
 
@@ -364,9 +364,9 @@ ${body}
 //   2. 把前几条热门短语**预渲染成真实的 <a> 链接**，让爬虫不执行 JS 也能发现内容页
 
 export function renderIndexHead(origin) {
-  const title = `${SITE_NAME} · 地道口语翻译 & 近义词辨析`;
+  const title = `${SITE_NAME} · 英语口语翻译与近义词辨析`;
   const description =
-    '英语口语助手：输入中文，立刻得到母语者真正会说的那句地道英语 —— ' +
+    '地道口语助手：输入中文，立刻得到母语者真正会说的那句地道英语 —— ' +
     '支持口语翻译、近义词辨析、真人发音、入门英语短文与收藏复习。附常用中文口语的地道英文说法。';
   const canonical = `${origin}/`;
 
@@ -374,7 +374,7 @@ export function renderIndexHead(origin) {
     '@context': 'https://schema.org',
     '@type': 'WebApplication',
     name: SITE_NAME,
-    alternateName: `${SITE_NAME} · 地道口语翻译`,
+    alternateName: `${SITE_NAME} · 英语口语翻译`,
     description,
     url: canonical,
     applicationCategory: 'EducationalApplication',
