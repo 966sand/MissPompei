@@ -23,6 +23,11 @@ const tabFav = $('#tabFav');
 
 const RECENT_KEY = 'ms_recent';
 const FAV_KEY = 'ms_favorites';
+// 阅读文章的本地缓存。服务端生成一批 5 篇要走 1~2 轮 DeepSeek（最坏 20~40s），
+// 所以打开首页就先预取一次；缓存命中时连预取都不用发，直接秒开。
+// TTL 取 30 分钟：短文内容是通用素材，半小时内没必要重新生成。（与小程序同口径）
+const READ_KEY = 'ms_reading';
+const READ_TTL = 30 * 60 * 1000;
 const REVIEW_DAYS = [1, 2, 4, 7, 15];
 const CN_RE = /[\u3400-\u4dbf\u4e00-\u9fff]/;
 const CN_RE_G = /[\u3400-\u4dbf\u4e00-\u9fff]/g;
@@ -57,6 +62,7 @@ let readArticles = [];
 let readLoading = false;
 let readSource = '';
 let expandedRead = new Set();
+let readInflight = false;     // 阅读请求并发闸：同一时刻只允许一路
 
 const MAXLEN = { colloquial: 200, synonym: 100 };
 const PLACEHOLDER = {
@@ -144,7 +150,9 @@ function paintTab() {
 
 function showTab(tab) {
   currentTab = tab;
-  if (tab === 'read' && !readArticles.length && !readLoading) loadReading(0);
+  // 幂等：预取已经拿过就走缓存/已就绪分支立即返回；
+  // 上一次预取失败（无文章、无在途请求）时，这里会重试一次。
+  if (tab === 'read') prefetchReading();
   if (tab === 'fav') renderFavList();
   paintTab();
 }
@@ -664,7 +672,51 @@ function renderPhrases() {
 }
 
 // ══════════ 阅读 ══════════
+
+// 幂等预取：打开首页 / 切到阅读 tab 时都调这里。
+// 三种情况直接返回，不发请求：已有文章、请求在途、本地缓存命中。
+function prefetchReading() {
+  if (readInflight) return;
+  if (readArticles.length) return;
+  if (readFromCache()) return;
+  loadReading(0);
+}
+
+// 读本地缓存。命中则直接可用（0 网络延迟），返回 true。
+function readFromCache() {
+  try {
+    const c = JSON.parse(localStorage.getItem(READ_KEY) || 'null');
+    if (!c || !c.articles || !c.articles.length) return false;
+    if (Date.now() - (c.at || 0) > READ_TTL) return false;
+    readArticles = c.articles;
+    readPage = c.page || 0;
+    readSource = c.source || '';
+    readLoading = false;
+    expandedRead = new Set();
+    renderReading();
+    return true;
+  } catch {
+    return false;   // 缓存坏了就当作没有，走网络
+  }
+}
+
+function saveReadingCache() {
+  try {
+    localStorage.setItem(READ_KEY, JSON.stringify({
+      page: readPage, source: readSource, at: Date.now(),
+      // body / words 就够渲染，派生字段（长度、段落、展开态）一律不入库
+      articles: readArticles.map((a) => ({
+        topic: a.topic, title: a.title, body: a.body,
+        words: a.words, background: a.background, reason: a.reason,
+      })),
+    }));
+  } catch { /* 存储超限或隐私模式：不影响主流程 */ }
+}
+
 async function loadReading(page) {
+  // 并发闸：预取在途时用户又点了「阅读」/「换一批」，不该再发一路
+  if (readInflight) return;
+  readInflight = true;
   readLoading = true;
   readSource = '';
   if (!readArticles.length) readList.innerHTML = '<div class="sk-card"></div><div class="sk-card"></div><div class="sk-card"></div>';
@@ -680,9 +732,13 @@ async function loadReading(page) {
     readList.innerHTML = `<div class="lib-empty">文章加载失败：${esc(e.message || '请稍后再试')}</div>`;
     readLoading = false;
     return;
+  } finally {
+    readInflight = false;
   }
   readLoading = false;
   expandedRead = new Set();
+  // 落盘：下次打开页面直接命中，省一次 20~40s 的生成
+  saveReadingCache();
   renderReading();
 }
 function renderReading() {
@@ -947,6 +1003,7 @@ backBtn.addEventListener('click', () => {
 });
 
 $('#popRefresh').addEventListener('click', () => { popPage += 1; renderPhrases(); });
+// 「换一批」是显式意图，永远走网络拿新内容，不吃缓存
 $('#readRefresh').addEventListener('click', () => { loadReading(readPage + 1); screenTop(); });
 $('#favReview').addEventListener('click', showReview);
 
@@ -1041,3 +1098,7 @@ renderRecent();
 renderPhrases();
 renderFavList();
 paintTab();
+// 打开首页就把阅读文章预取下来（命中缓存则立即返回），
+// 这样用户点「阅读」tab 时通常已经就绪，不必干等一次生成。
+// 必须放在所有同步初始化之后：它是异步的，不会阻塞首屏。
+prefetchReading();
