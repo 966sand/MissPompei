@@ -336,16 +336,16 @@ function notFoundPage() {
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>页面不存在 · 地道口语助手</title>
+<title>页面不存在 · 地道英语口语助手</title>
 <meta name="robots" content="noindex" />
 <link rel="stylesheet" href="/content.css" />
 </head>
 <body>
-<header class="hd"><a class="hd-brand" href="/">地道口语助手</a></header>
+<header class="hd"><a class="hd-brand" href="/">地道英语口语助手</a></header>
 <main class="wrap">
   <h1>没有找到这个页面</h1>
   <p class="lead">链接可能写错了，或者这条内容已经被移除。</p>
-  <a class="cta" href="/">回到地道口语助手首页</a>
+  <a class="cta" href="/">回到地道英语口语助手首页</a>
 </main>
 </body>
 </html>

@@ -22,7 +22,7 @@ import { READING_POOL } from './reading-pool.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(__dirname, 'public');
 
-const SITE_NAME = '地道口语助手';
+const SITE_NAME = '地道英语口语助手';
 const SITE_SLOGAN = '英语口语翻译 · 近义词辨析';
 
 // ══════════ 工具 ══════════
@@ -398,7 +398,7 @@ ${body}
 export function renderIndexHead(origin) {
   const title = `${SITE_NAME} · 英语口语翻译与近义词辨析`;
   const description =
-    '地道口语助手：输入中文，立刻得到母语者真正会说的那句地道英语 —— ' +
+    '地道英语口语助手：输入中文，立刻得到母语者真正会说的那句地道英语 —— ' +
     '支持口语翻译、近义词辨析、真人发音、入门英语短文与收藏复习。附常用中文口语的地道英文说法。';
   const canonical = `${origin}/`;
   const ogImage = `${origin}/og-image.png`;
@@ -417,7 +417,7 @@ export function renderIndexHead(origin) {
   };
 
   // 站点名标注的权威来源：内容页各自带 WebSite 实体，首页也必须带一份，
-  // 否则搜索引擎没有统一信号可用来在结果标题上方标注「地道口语助手」。
+  // 否则搜索引擎没有统一信号可用来在结果标题上方标注「地道英语口语助手」。
   const siteLd = {
     '@context': 'https://schema.org',
     '@type': 'WebSite',
