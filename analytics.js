@@ -92,3 +92,36 @@ export function sanitizeEvent(raw, platform) {
 export function isValidEventName(name) {
   return EVENTS.includes(String(name || ''));
 }
+
+// ---------- 存储凭证体检（server.js 用来决定「落库」还是「走日志兜底」） ----------
+//
+// 为什么需要：Render 的变量框把值原样保存，粘多行或带引号都不会报错。
+// 而 server.js 原先的兜底判据是「两个变量都为空」—— 一旦值填坏（非空但不可用），
+// 判据失效：事件既不进 Redis、也不打日志，静默丢失；更糟的是含换行的
+// Authorization 会让 fetch 在 Headers.append 处抛错，日志里只留一行看不懂的报错。
+// 所以这里先显式识别「明显不是凭证」的形态，宁可降级为日志兜底（数据还在），
+// 也不要假装配置成功。判定保持保守：只拦无歧义的坏形态，避免误判真凭证。
+export function credIssue(url, token) {
+  if (!url && !token) return '';
+  if (!url) return '只配了 token、缺 URL';
+  if (!token) return '只配了 URL、缺 token';
+  if (!/^https?:\/\/\S+$/.test(url)) return 'URL 含空白或不是 http(s) 链接';
+  if (/\s/.test(token)) return 'token 含空白或换行';
+  if (/^["']|["']$/.test(token)) return 'token 两端带引号';
+  if (token.includes('UPSTASH_REDIS_REST_')) return 'token 里粘的是 ".env 的 KEY= 行" 而不是 token';
+  return '';
+}
+
+// 写日志前脱敏：凭证填错时，报错信息里可能整段带着 Authorization 的值。
+// 除了替换明文，还要把换行压成空格 —— 否则日志查看器只显示第一行，
+// 后面的内容（可能含真 token）看不见却仍被记录。
+export function redactSecret(text, ...secrets) {
+  let t = String(text == null ? '' : text);
+  for (const s of secrets) {
+    if (!s) continue;
+    t = t.split(s).join('***');
+    // 兜一层：值被截断/转义后仍可能以开头片段露头
+    if (s.length >= 12) t = t.split(s.slice(0, 12)).join('***');
+  }
+  return t.replace(/[\r\n\t]+/g, ' ').replace(/\s{2,}/g, ' ').trim().slice(0, 300);
+}

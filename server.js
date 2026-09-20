@@ -17,7 +17,7 @@ import {
 } from './prompts.js';
 import { callDeepSeek } from './deepseek.js';
 import { READING_POOL } from './reading-pool.js';
-import { sanitizeEvent, MAX_EVENTS_PER_BATCH } from './analytics.js';
+import { sanitizeEvent, MAX_EVENTS_PER_BATCH, credIssue, redactSecret } from './analytics.js';
 import {
   originOf,
   renderPhrasePage,
@@ -140,9 +140,20 @@ function sendJSON(res, status, obj) {
 // 默认 fallback 是结构化 console 行（Render Logs 里立刻能看），
 // 配了 Upstash 的 REST 凭证就落到 Redis（纯 fetch，守住本项目「零外部依赖」的约定）。
 // 注意别用 Render 自带的免费 Postgres：它 90 天后会被永久删除。
-const UPSTASH_URL = (process.env.UPSTASH_REDIS_REST_URL || '').replace(/\/+$/, '');
-const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || '';
+// 先 trim（Render 的变量框很容易带上尾部换行/空格），再做体检；
+// 体检不通过的按「未配置」处理，于是自动落到下面的日志兜底 —— 数据不丢，只是不能聚合。
+const UPSTASH_URL_RAW = String(process.env.UPSTASH_REDIS_REST_URL || '').trim();
+const UPSTASH_TOKEN_RAW = String(process.env.UPSTASH_REDIS_REST_TOKEN || '').trim();
+const UPSTASH_ISSUE = credIssue(UPSTASH_URL_RAW, UPSTASH_TOKEN_RAW);
+const UPSTASH_URL = UPSTASH_ISSUE ? '' : UPSTASH_URL_RAW.replace(/\/+$/, '');
+const UPSTASH_TOKEN = UPSTASH_ISSUE ? '' : UPSTASH_TOKEN_RAW;
 const EV_RETENTION_DAYS = 90;
+
+if (UPSTASH_ISSUE) {
+  // 必须显式喊出来：这种填错法的默认后果是「静默丢数据」，最难发现。
+  console.error(`[ev] Upstash 凭证格式可疑（${UPSTASH_ISSUE}）→ 已按未配置处理：事件改走日志兜底，不会丢，只是不能聚合。`);
+  console.error('[ev] 修法：Render → Environment 里 UPSTASH_REDIS_REST_URL 只填 https://xxx.upstash.io，UPSTASH_REDIS_REST_TOKEN 只填 token 本身（不含 KEY=、引号、换行）。');
+}
 
 // 按北京时间分桶：用户与运营都在东八区，跨零点的日报必须与直觉一致。
 // 用 UTC 分桶会让「今天」从早上 8 点开始，日报每天都错半天。
@@ -150,8 +161,10 @@ function dayKey(d = new Date()) {
   return new Date(d.getTime() + 8 * 3600 * 1000).toISOString().slice(0, 10);
 }
 
-// Upstash REST：一次 HTTP 带上多条命令（pipeline），比逐条发省往返
-async function redisPipeline(cmds) {
+// Upstash REST：一次 HTTP 带上多条命令（pipeline），比逐条发省往返。
+// tag 区分是哪条通道（事件明细 / 页面计数），否则 hits 失败会记成 [ev] 前缀，
+// 排查时按 [hit] 搜不到任何东西。
+async function redisPipeline(cmds, tag = '[ev]') {
   if (!UPSTASH_URL || !UPSTASH_TOKEN || !cmds.length) return null;
   try {
     const r = await fetch(UPSTASH_URL + '/pipeline', {
@@ -164,27 +177,33 @@ async function redisPipeline(cmds) {
       signal: AbortSignal.timeout(4000),
     });
     if (!r.ok) {
-      console.error('[ev] sink', r.status, String(await r.text()).slice(0, 200));
+      console.error(tag, 'sink', r.status,
+        redactSecret(String(await r.text()).slice(0, 200), UPSTASH_TOKEN_RAW, UPSTASH_TOKEN));
       return null;
     }
     return await r.json();
   } catch (e) {
-    console.error('[ev] sink', e && e.message);
+    // e.message 常只有 "fetch failed"，真正的原因在 e.cause（ENOTFOUND / ECONNREFUSED / 证书…）
+    const cause = (e && e.cause && (e.cause.code || e.cause.message)) || '';
+    const msg = redactSecret((e && e.message) || String(e), UPSTASH_TOKEN_RAW, UPSTASH_TOKEN) || 'fetch failed';
+    console.error(tag, 'sink', msg, cause ? `(${cause})` : '');
     return null;
   }
 }
 
-// 事件明细：逐条 RPUSH 到当天列表，并给整表设 90 天过期（不设就会无限增长）
+// 事件明细：逐条 RPUSH 到当天列表，并给整表设 90 天过期（不设就会无限增长）。
+// 落库失败时**不吞**：改写成日志明细行。日志是免费档最后一道网，
+// 宁可刷屏也留着原始数据（修好后可人工补录），静默丢掉才是最坏的。
 async function sinkEvents(events) {
   if (!events.length) return;
-  if (!UPSTASH_URL || !UPSTASH_TOKEN) {
-    for (const e of events) console.log('[ev] ' + JSON.stringify(e));
-    return;
+  if (UPSTASH_URL && UPSTASH_TOKEN) {
+    const key = 'ev:' + dayKey();
+    const cmds = events.map((e) => ['RPUSH', key, JSON.stringify(e)]);
+    cmds.push(['EXPIRE', key, String(EV_RETENTION_DAYS * 86400)]);
+    if (await redisPipeline(cmds)) return;
+    console.warn(`[ev] sink 不通 → 本批 ${events.length} 条事件改走日志兜底`);
   }
-  const key = 'ev:' + dayKey();
-  const cmds = events.map((e) => ['RPUSH', key, JSON.stringify(e)]);
-  cmds.push(['EXPIRE', key, String(EV_RETENTION_DAYS * 86400)]);
-  await redisPipeline(cmds);
+  for (const e of events) console.log('[ev] ' + JSON.stringify(e));
 }
 
 const BOT_RE = /bot|crawler|spider|slurp|bingpreview|yandex|baiduspider|sogou|360spider|bytespider|semrush|ahrefs|petalbot/i;
@@ -195,6 +214,7 @@ function isHtmlDocPath(p) {
 
 // 页面请求计数：只用 HINCRBY 在服务端聚合，不落原始行（省存储、省读放大）。
 // 刻意不 await —— 统计不该拖慢任何一次页面加载。
+// 写不进去就退化成一行日志（同 sinkEvents 的策略：不静默丢计数）。
 function bumpHits(req, path) {
   const bot = BOT_RE.test(String(req.headers['user-agent'] || ''));
   const key = (bot ? 'hits:bot:' : 'hits:') + dayKey();
@@ -205,7 +225,9 @@ function bumpHits(req, path) {
   redisPipeline([
     ['HINCRBY', key, path, 1],
     ['EXPIRE', key, String(EV_RETENTION_DAYS * 86400)],
-  ]).catch(() => {});
+  ], '[hit]').then((r) => {
+    if (!r) console.log('[hit] ' + (bot ? 'bot ' : '') + path);
+  }, () => {});
 }
 
 // 服务端产生的事件：没有 sid（服务端不认识浏览器那边的匿名 id），
