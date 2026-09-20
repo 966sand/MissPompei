@@ -124,6 +124,8 @@
   </div>
 
   <script src="/phrase-data.js"></script>
+  <!-- 埋点必须在 app.js 之前：app.js 初始化时就会发第一条 page_view -->
+  <script src="/track.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

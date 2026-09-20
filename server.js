@@ -18,6 +18,7 @@ import {
 } from './prompts.js';
 import { callDeepSeek } from './deepseek.js';
 import { READING_POOL } from './reading-pool.js';
+import { sanitizeEvent, MAX_EVENTS_PER_BATCH } from './analytics.js';
 import {
   originOf,
   renderPhrasePage,
@@ -127,7 +128,168 @@ function sendJSON(res, status, obj) {
   res.end(JSON.stringify(obj));
 }
 
+// ══════════════════════ 埋点：接收 / 落地 / 报告 ══════════════════════
+//
+// 两条互相独立的通道，不能混：
+//   1) 事件明细（ev:<date>）—— 客户端发来的行为事件 + 服务端产生的 query_result。
+//      会被广告拦截器屏蔽，用于「用户干了什么」。
+//   2) 页面请求计数（hits:<date>）—— 服务端自己数的 HTML 文档请求，抗 AdBlock，
+//      用于「真实来了多少流量」。爬虫单独记在 hits:bot:<date>，方便配合 SEO 工作。
+//
+// ⚠️ 为什么必须写外部存储：Render 免费实例**没有持久盘**，容器在休眠（无流量 15 分钟）、
+// 重新部署、冷启动时都会换一块干净的文件系统 —— 写本地文件等于每天归零，而且不报错。
+// 默认 fallback 是结构化 console 行（Render Logs 里立刻能看），
+// 配了 Upstash 的 REST 凭证就落到 Redis（纯 fetch，守住本项目「零外部依赖」的约定）。
+// 注意别用 Render 自带的免费 Postgres：它 90 天后会被永久删除。
+const UPSTASH_URL = (process.env.UPSTASH_REDIS_REST_URL || '').replace(/\/+$/, '');
+const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || '';
+const EV_RETENTION_DAYS = 90;
+
+// 按北京时间分桶：用户与运营都在东八区，跨零点的日报必须与直觉一致。
+// 用 UTC 分桶会让「今天」从早上 8 点开始，日报每天都错半天。
+function dayKey(d = new Date()) {
+  return new Date(d.getTime() + 8 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
+// Upstash REST：一次 HTTP 带上多条命令（pipeline），比逐条发省往返
+async function redisPipeline(cmds) {
+  if (!UPSTASH_URL || !UPSTASH_TOKEN || !cmds.length) return null;
+  try {
+    const r = await fetch(UPSTASH_URL + '/pipeline', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + UPSTASH_TOKEN,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(cmds),
+      signal: AbortSignal.timeout(4000),
+    });
+    if (!r.ok) {
+      console.error('[ev] sink', r.status, String(await r.text()).slice(0, 200));
+      return null;
+    }
+    return await r.json();
+  } catch (e) {
+    console.error('[ev] sink', e && e.message);
+    return null;
+  }
+}
+
+// 事件明细：逐条 RPUSH 到当天列表，并给整表设 90 天过期（不设就会无限增长）
+async function sinkEvents(events) {
+  if (!events.length) return;
+  if (!UPSTASH_URL || !UPSTASH_TOKEN) {
+    for (const e of events) console.log('[ev] ' + JSON.stringify(e));
+    return;
+  }
+  const key = 'ev:' + dayKey();
+  const cmds = events.map((e) => ['RPUSH', key, JSON.stringify(e)]);
+  cmds.push(['EXPIRE', key, String(EV_RETENTION_DAYS * 86400)]);
+  await redisPipeline(cmds);
+}
+
+const BOT_RE = /bot|crawler|spider|slurp|bingpreview|yandex|baiduspider|sogou|360spider|bytespider|semrush|ahrefs|petalbot/i;
+
+function isHtmlDocPath(p) {
+  return p === '/' || /^\/(phrase|read)\/[a-z0-9][a-z0-9-]*\/?$/.test(p);
+}
+
+// 页面请求计数：只用 HINCRBY 在服务端聚合，不落原始行（省存储、省读放大）。
+// 刻意不 await —— 统计不该拖慢任何一次页面加载。
+function bumpHits(req, path) {
+  const bot = BOT_RE.test(String(req.headers['user-agent'] || ''));
+  const key = (bot ? 'hits:bot:' : 'hits:') + dayKey();
+  if (!UPSTASH_URL || !UPSTASH_TOKEN) {
+    console.log('[hit] ' + (bot ? 'bot ' : '') + path);
+    return;
+  }
+  redisPipeline([
+    ['HINCRBY', key, path, 1],
+    ['EXPIRE', key, String(EV_RETENTION_DAYS * 86400)],
+  ]).catch(() => {});
+}
+
+// 服务端产生的事件：没有 sid（服务端不认识浏览器那边的匿名 id），
+// 只有纯量级意义，不参与 UV 口径。
+function recordServerEvent(name, props, platform = 'web', uid = '') {
+  const e = sanitizeEvent(Object.assign({ e: name, ts: Date.now(), uid }, props), platform);
+  if (e) sinkEvents([e]).catch(() => {});
+}
+
+function clientIp(req) {
+  // Render 前面有 CDN，真实来源在 x-forwarded-for 的第一段
+  const xf = String(req.headers['x-forwarded-for'] || '');
+  return (xf.split(',')[0] || (req.socket && req.socket.remoteAddress) || '').trim().slice(0, 60);
+}
+
+// 极简限流：进程内计数即可（免费版只有一个实例）。
+// /api/ev 是匿名公网入口，没有闸门就等于把存储交给任何人。
+const evRate = new Map();
+const EV_RATE_MAX = 240;   // 每 IP 每分钟「事件条数」
+
+function allowEv(ip, n) {
+  const now = Date.now();
+  let rec = evRate.get(ip);
+  if (!rec || now - rec.at > 60000) {
+    if (evRate.size > 5000) evRate.clear();   // 防内存无限增长
+    rec = { at: now, n: 0 };
+    evRate.set(ip, rec);
+  }
+  rec.n += n;
+  return rec.n <= EV_RATE_MAX;
+}
+
+async function handleEvent(req, res, ip) {
+  let body;
+  try {
+    body = JSON.parse(await readBody(req, 256 * 1024));
+  } catch {
+    return sendJSON(res, 400, { error: '请求格式错误' });
+  }
+
+  const raw = Array.isArray(body && body.events) ? body.events.slice(0, MAX_EVENTS_PER_BATCH) : [];
+  if (!allowEv(ip, Math.max(raw.length, 1))) return sendJSON(res, 429, { error: 'too many events' });
+
+  const sid = body && body.sid;
+  const uid = body && body.uid;
+  const out = [];
+  for (const item of raw) {
+    const e = sanitizeEvent(Object.assign({ sid, uid }, item), 'web');
+    if (e) out.push(e);
+  }
+  await sinkEvents(out);
+  res.writeHead(204);
+  res.end();
+}
+
 // ---------- 近义词辨析 / 口语翻译（同一入口，用 kind 分流） ----------
+// 拆成 analyzeCore（返回 {status, body}，不写响应）+ handleAnalyze（写响应 + 埋点）：
+// 这样 query_result 能一次拿到耗时与成败，而不必在六七个 return 分支上各埋一遍。
+async function analyzeCore(body) {
+  const kind = body?.kind === 'colloquial' ? 'colloquial' : 'synonym';
+
+  if (kind === 'colloquial') {
+    const v = validateColloquialInput(body?.input || '');
+    if (!v.ok) return { status: 400, body: { error: v.msg }, kind };
+
+    const data = await callDeepSeek(buildColloquialPrompt(v.normalized), {
+      system: COLLOQUIAL_SYSTEM_PROMPT,
+      maxTokens: 2500,
+    });
+    return { status: 200, body: { ...data, mode: 'colloquial', zh: data.zh || v.normalized }, kind };
+  }
+
+  const v = validateInput(body?.input || '');
+  if (!v.ok) return { status: 400, body: { error: v.msg }, kind };
+
+  const tokens = toTokens(v.normalized);
+  const mode = tokens.length >= 2 ? 'multi' : 'single';
+  const userPrompt =
+    mode === 'multi' ? buildMultiPrompt(tokens) : buildSinglePrompt(tokens[0]);
+  const data = await callDeepSeek(userPrompt, { maxTokens: 4000 });
+  return { status: 200, body: data, kind };
+}
+
 async function handleAnalyze(req, res) {
   let body;
   try {
@@ -136,31 +298,28 @@ async function handleAnalyze(req, res) {
     return sendJSON(res, 400, { error: '请求格式错误' });
   }
 
-  const kind = body?.kind === 'colloquial' ? 'colloquial' : 'synonym';
-
+  const t0 = Date.now();
+  let status = 502;
+  let kind = body?.kind === 'colloquial' ? 'colloquial' : 'synonym';
+  let errMsg = '';
   try {
-    if (kind === 'colloquial') {
-      const v = validateColloquialInput(body?.input || '');
-      if (!v.ok) return sendJSON(res, 400, { error: v.msg });
-
-      const data = await callDeepSeek(buildColloquialPrompt(v.normalized), {
-        system: COLLOQUIAL_SYSTEM_PROMPT,
-        maxTokens: 2500,
-      });
-      return sendJSON(res, 200, { ...data, mode: 'colloquial', zh: data.zh || v.normalized });
-    }
-
-    const v = validateInput(body?.input || '');
-    if (!v.ok) return sendJSON(res, 400, { error: v.msg });
-
-    const tokens = toTokens(v.normalized);
-    const mode = tokens.length >= 2 ? 'multi' : 'single';
-    const userPrompt =
-      mode === 'multi' ? buildMultiPrompt(tokens) : buildSinglePrompt(tokens[0]);
-    const data = await callDeepSeek(userPrompt, { maxTokens: 4000 });
-    return sendJSON(res, 200, data);
+    const r = await analyzeCore(body);
+    status = r.status;
+    kind = r.kind;
+    if (status >= 400) errMsg = String(r.body?.error || '').slice(0, 60);
+    return sendJSON(res, status, r.body);
   } catch (e) {
-    return sendJSON(res, 502, { error: e.message || 'DeepSeek 调用失败' });
+    errMsg = String((e && e.message) || 'DeepSeek 调用失败').slice(0, 60);
+    return sendJSON(res, 502, { error: errMsg });
+  } finally {
+    // query_result 只有服务端产得出来：客户端只知道「我按下去了」，
+    // 不知道这次成没成、花了多久。成功率与 P50/P95 耗时的唯一来源是这里。
+    recordServerEvent('query_result', {
+      kind,
+      ok: status === 200 ? 1 : 0,
+      ms: Date.now() - t0,
+      err: errMsg,
+    });
   }
 }
 
@@ -378,6 +537,9 @@ const server = createServer(async (req, res) => {
     if (req.method === 'POST' && url.pathname === '/api/analyze') {
       return await handleAnalyze(req, res);
     }
+    if (req.method === 'POST' && url.pathname === '/api/ev') {
+      return await handleEvent(req, res, clientIp(req));
+    }
     if (req.method === 'GET' && url.pathname === '/api/reading') {
       return await handleReading(url, res);
     }
@@ -391,6 +553,8 @@ const server = createServer(async (req, res) => {
       if (url.pathname === '/sitemap.xml') {
         return sendMarkup(res, req, 'application/xml; charset=utf-8', renderSitemap(originOf(req)));
       }
+      // 页面级真实请求量：在返回之前打点，且不 await（统计不拖慢页面加载）
+      if (isHtmlDocPath(url.pathname)) bumpHits(req, url.pathname);
       const m = url.pathname.match(/^\/(phrase|read)\/([a-z0-9][a-z0-9-]*)\/?$/);
       if (m) return handleContentPage(req, res, m[1], m[2]);
       return await serveStatic(req, url.pathname, res);

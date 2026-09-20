@@ -38,6 +38,39 @@ const KANA_HANGUL_RE = /[\u3040-\u30ff\uac00-\ud7af]/g;
 const SPEAKER = '<svg class="sp-ico" viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z"/></svg>';
 const ACCENTS = ['var(--blue)', 'var(--green)', 'var(--orange)'];
 
+// ══════════ 埋点 ══════════
+// window.mstrack 由 /track.js 提供（同源、批量、失败静默）。这里再包一层 try，
+// 保证任何情况下埋点都不会把主流程带崩。
+// 事件名必须落在 miss-sorrento/analytics.js 的 EVENTS 里（web-analytics-test 会扫本文件校验）。
+function track(name, props) {
+  try { if (window.mstrack) window.mstrack(name, props); } catch { /* 忽略 */ }
+}
+// 初始化阶段会「顺便」调用到被埋点的函数（setMode / 按 hash 恢复 tab），
+// 那不是用户行为，不能计入 —— 用这个开关把启动期整段挡掉。
+let trackingOn = false;
+
+// ---------- hash 路由 ----------
+// 三个 tab 此前只切 class、URL 一动不动。后果不是「不优雅」，而是
+// **任何统计工具都只能看到一个页面**，"访问路径"这一项指标直接失效。
+// 这里把 tab 同步进 location.hash：
+//   - 只改 hash，不触发导航，hash 也不会发往服务端 → 对已收录的 54 个 URL 零影响；
+//   - 不用 ?tab=xxx，不造重复可索引地址，不干扰既有的 SEO 布局。
+// 内容页（/phrase/<slug>、/read/<slug>）本来就是真 URL，不在此列。
+const TAB_HASH = { home: '', read: '#read', fav: '#fav' };
+const HASH_TAB = { '': 'home', '#home': 'home', '#read': 'read', '#fav': 'fav' };
+
+function tabFromHash() {
+  return HASH_TAB[location.hash] || 'home';
+}
+
+function syncHash(tab) {
+  const want = TAB_HASH[tab] || '';
+  if (location.hash === want) return;
+  try {
+    history.replaceState(null, '', want || (location.pathname + location.search));
+  } catch { /* 忽略 */ }
+}
+
 // ---------- 状态 ----------
 let mode = 'colloquial';      // 'colloquial' | 'synonym'
 let currentTab = 'home';      // 'home' | 'read' | 'fav'
@@ -117,6 +150,7 @@ function updateCounter() {
   else if (tipEl.dataset.kind === 'over') setTip('');
 }
 function setMode(next, { keepValue = true } = {}) {
+  const changed = mode !== next;
   mode = next;
   document.querySelectorAll('.mode-opt').forEach((el) => {
     el.classList.toggle('active', el.dataset.mode === next);
@@ -129,6 +163,7 @@ function setMode(next, { keepValue = true } = {}) {
   if (!keepValue) qEl.value = '';
   setTip('');
   updateCounter();
+  if (changed && trackingOn) track('mode_switch', { mode: next });
 }
 
 // ---------- 视图切换 ----------
@@ -148,13 +183,17 @@ function paintTab() {
   backBtn.classList.toggle('hidden', !showBack);
 }
 
-function showTab(tab) {
+function showTab(tab, { fromHash = false } = {}) {
+  const changed = currentTab !== tab;
   currentTab = tab;
   // 幂等：预取已经拿过就走缓存/已就绪分支立即返回；
   // 上一次预取失败（无文章、无在途请求）时，这里会重试一次。
   if (tab === 'read') prefetchReading();
   if (tab === 'fav') renderFavList();
   paintTab();
+  // fromHash 时不再回写 hash：那是「根据 hash 恢复」的方向，回写会造成一次多余的历史操作
+  if (!fromHash) syncHash(tab);
+  if (changed && trackingOn) track('tab_switch', { tab });
 }
 
 // ---------- 查询 ----------
@@ -172,6 +211,10 @@ async function run(forced) {
   if (v) { setTip(v, /最多支持 \d+ 个字符/.test(v) ? 'over' : ''); return; }
   setTip('');
   if (forced == null) qEl.value = input;
+
+  // 只统计「真正发出去的查询」：校验没过的不算，否则字数超限这类本地拦截
+  // 会混进查询词词频里，把「用户在查什么」这张图打歪。
+  track('query_submit', { kind: reqKind, len: [...input].length, q: input });
 
   queryView = 'loading';
   loadingText.textContent = reqKind === 'colloquial' ? '翻译中…' : '查询中…';
@@ -429,6 +472,7 @@ function speak(text, btn) {
   try { if (_audio) { _audio.pause(); _audio = null; } } catch { /* 忽略 */ }
   clearPlaying();
   if (btn) btn.classList.add('playing');
+  track('tts_play', { len: [...t].length });
 
   const a = new Audio('/api/tts?text=' + encodeURIComponent(t));
   _audio = a;
@@ -460,7 +504,8 @@ function favBtnHtml() {
 }
 function toggleFav() {
   if (!currentInput || !currentData) return;
-  if (isFav(currentInput, currentKind)) {
+  const wasOn = isFav(currentInput, currentKind);
+  if (wasOn) {
     favCache = favCache.filter((r) => !(r.input === currentInput && (r.kind || 'synonym') === currentKind));
     toast('已取消收藏');
   } else {
@@ -477,6 +522,7 @@ function toggleFav() {
   updateFavBtn();
   renderFavList();
   renderFavDot();
+  track('favorite', { op: wasOn ? 'remove' : 'add', kind: currentKind });
 }
 function updateFavBtn() {
   const btn = document.querySelector('#state-result .fav-btn');
@@ -733,6 +779,8 @@ async function loadReading(page) {
     readArticles = data.articles || [];
     readPage = data.page != null ? data.page : page;
     readSource = data.source || '';
+    // source 是 cache / ai / fallback：这条是「AI 生成到底靠不靠得住」的唯一体温计
+    track('reading_load', { page: readPage, source: readSource || 'none' });
   } catch (e) {
     readArticles = [];
     readList.innerHTML = `<div class="lib-empty">文章加载失败：${esc(e.message || '请稍后再试')}</div>`;
@@ -945,6 +993,8 @@ function closeShareSheet() { document.getElementById('shareSheet').classList.add
 async function shareVia(role) {
   const url = buildShareUrl();
   const title = shareTitle();
+  // channel = timeline / session / link，对应分享浮层里的三个入口
+  track('share', { channel: role });
   if (role !== 'link' && navigator.share) {
     try {
       await navigator.share({ title, text: title, url });
@@ -1107,7 +1157,22 @@ setMode('colloquial');
 renderRecent();
 renderPhrases();
 renderFavList();
-paintTab();
+// 按 hash 恢复 tab（刷新页面、以及被分享出去的 #read 链接，都该落回原处）。
+// 顺序不能反：必须先把 tab 恢复好，再打开埋点开关，否则这次恢复会被记成「用户点了 tab」。
+showTab(tabFromHash(), { fromHash: true });
+
+trackingOn = true;
+track('page_view', {
+  path: location.pathname + location.hash,
+  // referrer 是「从哪来」的唯一线索：百度/搜狗搜索、别人的分享、直接输入
+  from: document.referrer ? document.referrer.slice(0, 100) : '',
+});
+
+// 浏览器前进/后退只改 hash、不重载页面，需要自己接管一次
+window.addEventListener('hashchange', () => {
+  const t = tabFromHash();
+  if (t !== currentTab) showTab(t, { fromHash: true });
+});
 
 // 从内容页（/phrase/<slug>）的 CTA 进来时会带 ?q=<中文>，等价于用户已经按下 go：
 // 直接填好输入框并开查，省掉一次手动粘贴。内容页是给搜索引擎看的，这条是给真人的闭环。
