@@ -1,12 +1,11 @@
 // server.js — Miss Sorrento 后端（零外部依赖，Node 20+ 内置 http + fetch）
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, join, extname, normalize, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { PORT } from './config.js';
+import { PORT, DEEPSEEK_API_KEY } from './config.js';
 import { validateInput, validateColloquialInput, toTokens } from './validate.js';
 import {
   buildSinglePrompt,
@@ -570,7 +569,12 @@ const server = createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`Miss Sorrento 已启动： http://localhost:${PORT}`);
-  if (!existsSync(join(__dirname, '.env'))) {
-    console.warn('提示：未检测到 .env 文件，DeepSeek 调用将返回 500。请复制 .env.example 为 .env 并填入 DEEPSEEK_API_KEY。');
+  // 判据是「key 到手了没有」，不是「有没有 .env 文件」：
+  // Render 上不存在 .env（变量由平台直接注入 process.env），按文件判会导致
+  // 每次部署都误报「DeepSeek 调用将返回 500」，而线上其实是好的。
+  if (!DEEPSEEK_API_KEY) {
+    console.warn(
+      '提示：未配置 DEEPSEEK_API_KEY，analyze 调用将返回 500。本地写进 .env，Render 写进 Environment。'
+    );
   }
 });
